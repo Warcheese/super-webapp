@@ -382,7 +382,7 @@ class BillingTests(TestCase):
             self.assertEqual(self.client.post(url, {'confirm': 'yes'}).status_code, 302)
             self.client.force_login(self.user)
 
-    def test_only_draft_invoices_can_be_deleted(self):
+    def test_draft_and_final_invoices_can_be_deleted(self):
         draft = Invoice.objects.create(patient=self.patient)
         InvoiceItem.objects.create(invoice=draft, date=date.today(), description='Test', price='1')
         self.client.post(reverse('invoice_delete', args=[draft.pk]), {'confirm': 'yes'})
@@ -390,9 +390,12 @@ class BillingTests(TestCase):
         self.assertFalse(InvoiceItem.objects.filter(invoice_id=draft.pk).exists())
         invoice = finalize_invoice(self.invoice.pk, 0)
         pdf = (Path(self.tmp.name) / invoice.pdf_path).read_bytes()
-        self.client.post(reverse('invoice_delete', args=[invoice.pk]), {'confirm': 'yes'})
-        self.assertTrue(Invoice.objects.filter(pk=invoice.pk).exists())
-        self.assertEqual((Path(self.tmp.name) / invoice.pdf_path).read_bytes(), pdf)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse('invoice_delete', args=[invoice.pk]), {'confirm': 'yes'})
+        self.assertFalse(Invoice.objects.filter(pk=invoice.pk).exists())
+        self.assertFalse((Path(self.tmp.name) / invoice.pdf_path).exists())
+        self.assertFalse((Path(self.tmp.name) / invoice.copy_path).exists())
+        self.assertEqual(NumberSequence.objects.get(year=invoice.date.year).next_number, 2)
 
     def test_patient_delete_protects_existing_invoices(self):
         response = self.client.post(reverse('patient_delete', args=[self.patient.pk]), {'confirm': 'yes'}, follow=True)
@@ -577,11 +580,30 @@ class BillingTests(TestCase):
         self.assertEqual(set((Path(self.tmp.name)/'pdfs').iterdir()), paths)
         self.assertEqual(Invoice.objects.count(), 1)
 
-    def test_cancelled_and_cancellation_documents_cannot_be_deleted(self):
+    def test_linked_documents_require_explicit_deletion_in_order(self):
         from .services import cancel_invoice
         original = finalize_invoice(self.invoice.pk, 0)
-        cancellation, _ = cancel_invoice(original.pk, reason='Fehler')
-        for obj in [original, cancellation]:
-            response = self.client.post(reverse('invoice_delete', args=[obj.pk]), {'confirm':'yes'}, follow=True)
-            self.assertContains(response, 'können nicht gelöscht werden')
-            self.assertTrue(Invoice.objects.filter(pk=obj.pk).exists())
+        cancellation, draft = cancel_invoice(original.pk, reason='Fehler', correct=True)
+        url = reverse('invoice_delete', args=[original.pk])
+        self.assertContains(self.client.get(url), 'verknüpften Rechnungen')
+        self.client.post(url, {'confirm':'yes'})
+        self.assertEqual(Invoice.objects.count(), 3)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse('invoice_delete', args=[cancellation.pk]), {'confirm':'yes'})
+        original.refresh_from_db()
+        self.assertEqual(original.status, 'Offen')
+        self.client.post(reverse('invoice_delete', args=[draft.pk]), {'confirm':'yes'})
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(url, {'confirm':'yes'})
+        self.assertEqual(Invoice.objects.count(), 0)
+
+    def test_paid_invoice_can_be_deleted_after_confirmation(self):
+        original = finalize_invoice(self.invoice.pk, 0)
+        original.paid_at = date.today()
+        original.save()
+        url = reverse('invoice_delete', args=[original.pk])
+        self.assertContains(self.client.get(url), 'Bist du dir sicher?')
+        self.assertTrue(Invoice.objects.filter(pk=original.pk).exists())
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(url, {'confirm':'yes'})
+        self.assertFalse(Invoice.objects.filter(pk=original.pk).exists())

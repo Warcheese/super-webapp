@@ -320,15 +320,13 @@ def patient_delete(request, pk):
 @login_required
 def invoice_delete(request, pk):
     obj = get_object_or_404(Invoice, pk=pk)
-    if obj.number:
-        messages.error(request, 'Fertige Rechnungen können nicht gelöscht werden. Bitte die Stornofunktion verwenden.')
-        return redirect('invoice_detail', pk=pk)
+    linked = Invoice.objects.filter(Q(cancellation_of_id=pk) | Q(correction_of_id=pk))
+    if request.method == 'POST' and linked.exists():
+        messages.error(request, 'Bitte zuerst die verknüpften Storno- und Korrekturrechnungen löschen.')
+        return redirect('invoice_delete', pk=pk)
     if request.method == 'POST' and request.POST.get('confirm') == 'yes':
         with transaction.atomic():
             obj = get_object_or_404(Invoice, pk=pk)
-            if obj.number:
-                messages.error(request, 'Der Entwurf wurde inzwischen erstellt. Bitte die Stornofunktion verwenden.')
-                return redirect('invoice_detail', pk=pk)
             root = Path(django_settings.DATA_DIR).resolve()
             paths = []
             for relative in [obj.pdf_path, obj.copy_path]:
@@ -336,7 +334,11 @@ def invoice_delete(request, pk):
                     path = (root / relative).resolve()
                     if path.is_relative_to(root / 'pdfs'):
                         paths.append(path)
-            obj.delete()
+            try:
+                obj.delete()
+            except ProtectedError:
+                messages.error(request, 'Bitte zuerst die verknüpften Storno- und Korrekturrechnungen löschen.')
+                return redirect('invoice_delete', pk=pk)
             def remove_pdfs():
                 for path in paths:
                     try:
@@ -347,6 +349,7 @@ def invoice_delete(request, pk):
         messages.success(request, 'Rechnung gelöscht. Bereits vergebene Rechnungsnummern werden nicht zurückgesetzt.')
         return redirect('invoices')
     return render(request, 'billing/delete_confirm.html', {'title': 'Rechnung löschen',
+        'linked_invoices': linked, 'delete_blocked': linked.exists(), 'is_cancellation': bool(obj.cancellation_of_id),
         'object_name': f'{obj.number or "Entwurf"} · {obj.recipient}',
         'warning': 'Bist du dir sicher? Die Rechnung, ihre Leistungen und gespeicherten PDFs werden dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.',
         'cancel_url': reverse('invoice_detail', args=[pk]), 'nav': 'invoices'})

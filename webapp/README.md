@@ -154,13 +154,13 @@ GitHub Actions prüft die WebApp, Migrationen, Tests und Docker-Build bei Änder
 
 ## Storno, Korrektur und Löschen
 
-Fertige Rechnungen bleiben erhalten und können nicht mehr gelöscht werden. „Stornieren“ erstellt nach Bestätigung und Angabe eines Grundes eine Stornorechnung mit eigener Nummer, Bezug zum Original und negativem Betrag. Die Originalrechnung wird als „Storniert“ angezeigt und zählt nicht mehr als offene Forderung. Die PDFs des Originals bleiben unverändert.
+Auch fertige Rechnungen können nach Bestätigung dauerhaft gelöscht werden. Storno ist weiterhin als separate Funktion verfügbar. „Stornieren“ erstellt nach Bestätigung und Angabe eines Grundes eine Stornorechnung mit eigener Nummer, Bezug zum Original und negativem Betrag. Die Originalrechnung wird als „Storniert“ angezeigt und zählt nicht mehr als offene Forderung. Die PDFs des Originals bleiben unverändert.
 
 „Stornieren und korrigieren“ legt zusätzlich einen bearbeitbaren Korrekturentwurf an. Nach Prüfung erhält die Ersatzrechnung eine neue Nummer. Original, Storno und Korrektur sind auf ihren Detailseiten verknüpft. Auch bei bezahltem Original wird die Ersatzrechnung nicht automatisch als bezahlt markiert. Die Zahlungsart des Korrekturentwurfs ist zunächst Überweisung; Barzahlung kann bei Bedarf ausdrücklich gewählt werden.
 
 Bei bezahlten Originalen muss Rückzahlung / Verrechnung festgehalten werden (noch offen, Rückzahlung erledigt, Verrechnung vereinbart). Der Stand und eine Notiz lassen sich auf der Stornoseite später aktualisieren. Das löst keine Zahlung aus und verändert das gespeicherte Storno-PDF nicht.
 
-Entwürfe und Leistungsvorlagen können nach Bestätigung gelöscht werden. Patienten mit bestehenden Rechnungen bleiben geschützt. Das Löschen einer Leistungsvorlage verändert vorhandene Rechnungsleistungen nicht.
+Entwürfe, fertige Rechnungen und Leistungsvorlagen können nach Bestätigung gelöscht werden. Rechnungsleistungen, PDFs und Zweitschriften werden dabei ebenfalls entfernt; die Nummernfolge wird nicht zurückgesetzt. Verknüpfte Storno- und Korrekturrechnungen müssen zuerst einzeln gelöscht werden; es gibt kein automatisches Mitlöschen. Wird eine Stornorechnung gelöscht, wird das Original nicht mehr als storniert angezeigt. Patienten mit bestehenden Rechnungen bleiben geschützt. Das Löschen einer Leistungsvorlage verändert vorhandene Rechnungsleistungen nicht.
 
 ## Oberfläche
 
