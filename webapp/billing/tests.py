@@ -242,7 +242,7 @@ class BillingTests(TestCase):
 
     def practice_data(self):
         return {name:getattr(self.practice,name) for name in [
-            'name','profession','street','city','phone','bank','iban','bic','tax_text','payment_days']}
+            'name','profession','street','city','phone','bank','iban','bic','tax_text','payment_days','color_scheme']}
 
     def logo_file(self, color='green'):
         from io import BytesIO
@@ -257,10 +257,11 @@ class BillingTests(TestCase):
         self.assertNotContains(self.client.get(reverse('settings')), 'name="developer_greetings" checked')
 
     def test_greetings_setting_enables_and_disables_message(self):
-        data=self.practice_data() | {'developer_greetings':'on','greeting_messages':'Eigener Gruß <3'}
+        data=self.practice_data() | {'developer_greetings':'on'}
         response=self.client.post(reverse('settings'),data)
         self.assertEqual(response.status_code,302)
-        self.assertContains(self.client.get(reverse('dashboard')),'Eigener Gruß &lt;3')
+        self.assertContains(self.client.get(reverse('dashboard')), 'personal-greeting')
+        self.assertNotContains(self.client.get(reverse('settings')), 'greeting_messages')
         self.client.post(reverse('settings'),self.practice_data())
         self.assertNotContains(self.client.get(reverse('dashboard')),'personal-greeting')
 
@@ -381,16 +382,17 @@ class BillingTests(TestCase):
             self.assertEqual(self.client.post(url, {'confirm': 'yes'}).status_code, 302)
             self.client.force_login(self.user)
 
-    def test_invoice_delete_removes_items_pdfs_but_preserves_number_sequence(self):
+    def test_only_draft_invoices_can_be_deleted(self):
+        draft = Invoice.objects.create(patient=self.patient)
+        InvoiceItem.objects.create(invoice=draft, date=date.today(), description='Test', price='1')
+        self.client.post(reverse('invoice_delete', args=[draft.pk]), {'confirm': 'yes'})
+        self.assertFalse(Invoice.objects.filter(pk=draft.pk).exists())
+        self.assertFalse(InvoiceItem.objects.filter(invoice_id=draft.pk).exists())
         invoice = finalize_invoice(self.invoice.pk, 0)
-        paths = [Path(self.tmp.name) / invoice.pdf_path, Path(self.tmp.name) / invoice.copy_path]
-        next_number = NumberSequence.objects.get(year=invoice.date.year).next_number
-        with self.captureOnCommitCallbacks(execute=True):
-            self.client.post(reverse('invoice_delete', args=[invoice.pk]), {'confirm': 'yes'})
-        self.assertFalse(Invoice.objects.filter(pk=invoice.pk).exists())
-        self.assertFalse(InvoiceItem.objects.filter(invoice_id=invoice.pk).exists())
-        self.assertTrue(all(not path.exists() for path in paths))
-        self.assertEqual(NumberSequence.objects.get(year=invoice.date.year).next_number, next_number)
+        pdf = (Path(self.tmp.name) / invoice.pdf_path).read_bytes()
+        self.client.post(reverse('invoice_delete', args=[invoice.pk]), {'confirm': 'yes'})
+        self.assertTrue(Invoice.objects.filter(pk=invoice.pk).exists())
+        self.assertEqual((Path(self.tmp.name) / invoice.pdf_path).read_bytes(), pdf)
 
     def test_patient_delete_protects_existing_invoices(self):
         response = self.client.post(reverse('patient_delete', args=[self.patient.pk]), {'confirm': 'yes'}, follow=True)
@@ -439,7 +441,6 @@ class BillingTests(TestCase):
         self.assertEqual(len(MESSAGES), 59)
         self.assertEqual(len(set(MESSAGES)), 59)
         self.practice.developer_greetings = True
-        self.practice.greeting_messages = ''
         self.practice.save()
         for index, message in enumerate(MESSAGES):
             with patch('billing.greetings.choice', side_effect=lambda options, index=index: options[index]):
@@ -447,3 +448,140 @@ class BillingTests(TestCase):
             self.assertEqual(response.context['greeting'], message)
             from django.utils.html import escape
             self.assertContains(response, escape(message))
+
+
+    def test_cancel_and_correct_preserves_original_and_links_new_documents(self):
+        from .services import cancel_invoice
+        from io import BytesIO
+        from pypdf import PdfReader
+        original = finalize_invoice(self.invoice.pk, 0)
+        pdf = (Path(self.tmp.name) / original.pdf_path).read_bytes()
+        cancellation, draft = cancel_invoice(original.pk, reason='Falsche Leistung', correct=True)
+        original.refresh_from_db()
+        self.assertEqual(original.status, 'Storniert')
+        self.assertEqual(cancellation.status, 'Stornorechnung')
+        self.assertEqual(cancellation.total, -original.total)
+        self.assertNotEqual(cancellation.number, original.number)
+        self.assertEqual(cancellation.patient_snapshot, original.patient_snapshot)
+        self.assertEqual((Path(self.tmp.name) / original.pdf_path).read_bytes(), pdf)
+        text = ''.join(page.extract_text() for page in PdfReader(BytesIO((Path(self.tmp.name)/cancellation.pdf_path).read_bytes())).pages)
+        self.assertIn('STORNORECHNUNG', text)
+        self.assertIn(original.number, text)
+        self.assertIn('-49,98', text)
+        self.assertNotIn('Bitte überweisen', text)
+        self.assertIsNone(draft.number)
+        self.assertEqual(draft.correction_of_id, original.pk)
+        self.assertEqual(draft.items.count(), original.items.count())
+        self.assertIsNone(draft.paid_at)
+        item = draft.items.first()
+        item.price = '30'
+        item.save()
+        replacement = finalize_invoice(draft.pk, 0)
+        self.assertEqual(replacement.total, Decimal('60'))
+        self.assertNotEqual(replacement.number, original.number)
+        self.assertNotEqual(replacement.number, cancellation.number)
+        self.assertEqual(self.client.get(reverse('invoice_detail', args=[original.pk])).status_code, 200)
+        self.assertContains(self.client.get(reverse('invoice_detail', args=[cancellation.pk])), replacement.number)
+
+    def test_cancel_excludes_documents_from_open_and_paid_filters(self):
+        from .services import cancel_invoice
+        original = finalize_invoice(self.invoice.pk, 0)
+        cancellation, _ = cancel_invoice(original.pk, reason='Fehler')
+        self.assertEqual(self.client.get(reverse('dashboard')).context['open_count'], 0)
+        self.assertEqual(len(self.client.get(reverse('invoices'), {'status':'open'}).context['invoices']), 0)
+        ids = {i.pk for i in self.client.get(reverse('invoices'), {'status':'cancelled'}).context['invoices']}
+        self.assertEqual(ids, {original.pk, cancellation.pk})
+        self.client.post(reverse('invoice_paid', args=[original.pk]))
+        original.refresh_from_db()
+        self.assertIsNone(original.paid_at)
+
+    def test_paid_cancellation_records_refund_without_marking_replacement_paid(self):
+        from .services import cancel_invoice
+        original = finalize_invoice(self.invoice.pk, 0)
+        original.paid_at = date.today()
+        original.save()
+        with self.assertRaises(ValidationError):
+            cancel_invoice(original.pk, reason='Fehler')
+        cancellation, draft = cancel_invoice(original.pk, reason='Fehler', correct=True, settlement='pending')
+        self.assertEqual(cancellation.settlement, 'pending')
+        self.assertIsNone(draft.paid_at)
+        pdf = (Path(self.tmp.name)/cancellation.pdf_path).read_bytes()
+        self.client.post(reverse('invoice_settlement',args=[cancellation.pk]), {'settlement':'refund','settlement_note':'Überwiesen'})
+        cancellation.refresh_from_db()
+        self.assertEqual(cancellation.settlement, 'refund')
+        self.assertEqual((Path(self.tmp.name)/cancellation.pdf_path).read_bytes(), pdf)
+        self.assertEqual(len(self.client.get(reverse('invoices'), {'status':'paid'}).context['invoices']), 0)
+
+    def test_cancel_failure_rolls_back_and_duplicate_cancellation_is_blocked(self):
+        from .services import cancel_invoice
+        original = finalize_invoice(self.invoice.pk, 0)
+        next_number = NumberSequence.objects.get(year=original.date.year).next_number
+        with patch('billing.services.render_pdf', side_effect=OSError('failed')):
+            with self.assertRaises(OSError):
+                cancel_invoice(original.pk, reason='Fehler', correct=True)
+        self.assertEqual(Invoice.objects.count(), 1)
+        self.assertEqual(NumberSequence.objects.get(year=original.date.year).next_number, next_number)
+        cancellation, _ = cancel_invoice(original.pk, reason='Fehler')
+        with self.assertRaises(ValidationError):
+            cancel_invoice(original.pk, reason='Nochmals')
+        with self.assertRaises(ValidationError):
+            cancel_invoice(cancellation.pk, reason='Nochmals')
+        self.assertEqual(Invoice.objects.count(), 2)
+
+    def test_cancellation_requires_confirmation_reason_auth_and_csrf(self):
+        original = finalize_invoice(self.invoice.pk, 0)
+        url = reverse('invoice_correct',args=[original.pk])
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.client.post(url, {'reason':'Fehler'})
+        self.assertEqual(Invoice.objects.count(), 1)
+        self.client.post(url, {'confirm':'on'})
+        self.assertEqual(Invoice.objects.count(), 1)
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+        self.assertEqual(csrf_client.post(url, {'confirm':'on','reason':'Fehler'}).status_code,403)
+        self.client.logout()
+        self.assertEqual(self.client.post(url, {'confirm':'on','reason':'Fehler'}).status_code,302)
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.post(url, {'confirm':'on','reason':'Fehler'}).status_code,302)
+        self.assertEqual(Invoice.objects.count(), 3)
+
+    def test_menu_logo_and_all_color_schemes(self):
+        from .forms import PracticeForm
+        self.assertNotIn('greeting_messages', PracticeForm().fields)
+        self.assertContains(self.client.get(reverse('dashboard')), 'brand-icon')
+        self.client.post(reverse('settings'),self.practice_data()|{'logo':self.logo_file()})
+        for scheme in ['green','blue','purple','rose','dark']:
+            response=self.client.post(reverse('settings'),self.practice_data()|{'color_scheme':scheme})
+            self.assertEqual(response.status_code,302)
+            response=self.client.get(reverse('dashboard'))
+            self.assertContains(response, f'data-theme="{scheme}"')
+            self.assertContains(response, 'class="brand-logo"')
+            self.assertNotContains(response, 'class="brand-icon"')
+        response=self.client.post(reverse('settings'),self.practice_data()|{'color_scheme':'invalid'})
+        self.assertEqual(response.status_code,200)
+
+
+
+    def test_failed_cancellation_save_removes_generated_file_and_rolls_back(self):
+        from .services import cancel_invoice
+        original = finalize_invoice(self.invoice.pk, 0)
+        paths = set((Path(self.tmp.name)/'pdfs').iterdir())
+        save = Invoice.save
+        def fail_on_frozen_cancellation(obj, *args, **kwargs):
+            if obj.cancellation_of_id and obj.pdf_path:
+                raise OSError('Failed after writing cancellation PDF')
+            return save(obj, *args, **kwargs)
+        with patch.object(Invoice, 'save', fail_on_frozen_cancellation):
+            with self.assertRaises(OSError):
+                cancel_invoice(original.pk, reason='Fehler', correct=True)
+        self.assertEqual(set((Path(self.tmp.name)/'pdfs').iterdir()), paths)
+        self.assertEqual(Invoice.objects.count(), 1)
+
+    def test_cancelled_and_cancellation_documents_cannot_be_deleted(self):
+        from .services import cancel_invoice
+        original = finalize_invoice(self.invoice.pk, 0)
+        cancellation, _ = cancel_invoice(original.pk, reason='Fehler')
+        for obj in [original, cancellation]:
+            response = self.client.post(reverse('invoice_delete', args=[obj.pk]), {'confirm':'yes'}, follow=True)
+            self.assertContains(response, 'können nicht gelöscht werden')
+            self.assertTrue(Invoice.objects.filter(pk=obj.pk).exists())

@@ -117,13 +117,18 @@ def render_pdf(invoice, *, duplicate=False, preview=False):
                                      ('LINEBELOW',(0,0),(-1,-1),0.4,colors.black)]))
     sender_table.hAlign = 'LEFT'
     recipient = '\n'.join(filter(None, [patient['title'], f"{patient['first_name']} {patient['last_name']}", patient['street'], patient['city']]))
-    title = 'ENTWURF · Vorschau' if preview else 'RECHNUNG'
+    storno = bool(invoice.cancellation_of_id)
+    title = 'STORNORECHNUNG' if storno else ('ENTWURF · Vorschau' if preview else 'RECHNUNG')
     story = [sender_table, Spacer(1,2*mm),p(recipient),Spacer(1,16*mm),p(title,'title')]
     if duplicate:
         story += [Spacer(1,1*mm),p('Zweitschrift zur Vorlage bei der Beihilfe','small')]
+    if storno:
+        story += [Spacer(1,2*mm),p(f'Storno zu Rechnung {invoice.cancellation_of.number} vom {invoice.cancellation_of.date:%d.%m.%Y}'),p(f'Grund: {invoice.cancellation_reason}'),Spacer(1,3*mm)]
+    elif invoice.correction_of_id:
+        story += [Spacer(1,2*mm),p(f'Korrigierte Rechnung zu {invoice.correction_of.number}'),Spacer(1,3*mm)]
     salutation = ' '.join(filter(None,[patient['title'],patient['first_name'],patient['last_name']]))
     story += [Spacer(1,2*mm),p(f'Sehr geehrte(r) {salutation},'),Spacer(1,1*mm),
-              p('ich erlaube mir, Ihnen die unten aufgeführten Leistungen in Rechnung zu stellen.'),Spacer(1,10*mm)]
+              p('Die unten aufgeführten Leistungen werden vollständig storniert.' if storno else 'ich erlaube mir, Ihnen die unten aufgeführten Leistungen in Rechnung zu stellen.'),Spacer(1,10*mm)]
     if invoice.diagnosis or invoice.invoice_type == 'private':
         diagnosis = Paragraph('<b>Diagnose(n):</b> '+escape(invoice.diagnosis).replace('\n','<br/>'),styles['body'])
         story += [diagnosis,Spacer(1,3*mm)]
@@ -139,7 +144,7 @@ def render_pdf(invoice, *, duplicate=False, preview=False):
         if item.quantity != 1:
             quantity = format(item.quantity.normalize(),'f').replace('.',',')
             description = f'{description}\n{quantity} × {money(item.price)}'
-        cells = [item.date.strftime('%d.%m.%Y')] + ([item.code] if private else []) + [description,money(item.total,currency=False)]
+        cells = [item.date.strftime('%d.%m.%Y')] + ([item.code] if private else []) + [description,money(-item.total if storno else item.total,currency=False)]
         rows.append([p(value,'amount' if n==len(cells)-1 else 'table') for n,value in enumerate(cells)])
     table = LongTable(rows, colWidths=widths, repeatRows=1, hAlign='LEFT')
     table.setStyle(TableStyle([('LINEBELOW',(0,0),(-1,0),0.4,colors.black),
@@ -152,13 +157,19 @@ def render_pdf(invoice, *, duplicate=False, preview=False):
                                 ('TOPPADDING',(0,0),(-1,-1),4),('LEFTPADDING',(0,0),(-1,-1),3),
                                 ('RIGHTPADDING',(0,0),(-1,-1),3)]))
     story += [table,KeepTogether([Spacer(1,5*mm),summary,Spacer(1,4*mm),p(practice['tax_text'],'tax')]),Spacer(1,14*mm)]
-    if invoice.payment_method == 'cash':
+    if storno:
+        payment = 'Diese Stornorechnung hebt die oben genannte Originalrechnung vollständig auf. Es ist keine Zahlung auf diese Stornorechnung erforderlich.'
+        if invoice.settlement:
+            payment += f' Rückzahlung / Verrechnung: {invoice.get_settlement_display()}.'
+        if invoice.settlement_note:
+            payment += f' {invoice.settlement_note}'
+    elif invoice.payment_method == 'cash':
         payment = f'Rechnungsbetrag in bar dankend am {invoice.cash_date:%d.%m.%Y} erhalten.'
     else:
         payment = f"Bitte überweisen Sie den Rechnungsbetrag innerhalb von {practice['payment_days']} Tagen an das unten angegebene Konto."
-    if private:
+    if private and not storno:
         deadline = f" innerhalb von {practice['payment_days']} Tagen" if invoice.payment_method != 'cash' else ''
-        story += [p('Die in meiner Rechnung enthaltenen analogen Leistungsziffern und deren entsprechenden Leistungsbeschreibungen zeigen die teilweise oder vollständige Ähnlichkeit mit durchgeführten und therapeutischen Leistungen des GebüH an. Unabhängig vom Erstattungsverhalten der Beihilfestellen und privaten Krankenversicherungen ist die Rechnung in voller Höhe'+deadline+' zu zahlen.'),Spacer(1,4*mm)]
+        story += [p('Die in meiner Rechnung enthaltenen analogen Leistungsziffern und deren entsprechenden Leistungsbeschreibungen zeigen die teilweise oder vollständige Ähnlichkeit mit durchgeführten und therapeutischen Leistungen des GebüH an. Unabhängig vom Erstattungsverhalten der Beihilfestellen und privaten Krankenversicherungen ist die Rechnung in voller Höhe'+deadline+(' zu zahlen.' if invoice.payment_method != 'cash' else ' bereits bezahlt; der Zahlungseingang ist unten bestätigt.')),Spacer(1,4*mm)]
     story += [KeepTogether([p(payment,bold=True),Spacer(1,10*mm),p(f"Mit freundlichen Grüßen\n{practice['name']}")])]
 
     def draw_header(page_canvas, document):

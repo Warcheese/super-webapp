@@ -6,14 +6,14 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
-from .models import Invoice, NumberSequence, Practice
+from .models import Invoice, InvoiceItem, NumberSequence, Practice
 from .pdf import render_pdf
 
 logger = logging.getLogger(__name__)
 
 
 def practice_snapshot(practice):
-    # UI preferences and personal greetings are unrelated to invoice content.
+    # UI preferences are unrelated to invoice content.
     fields = ['name', 'profession', 'street', 'city', 'phone', 'bank', 'iban', 'bic', 'tax_text', 'payment_days']
     return {name: getattr(practice, name) for name in fields} | {'logo': practice.logo.name or ''}
 
@@ -86,4 +86,62 @@ def finalize_invoice(pk, revision):
                 path.unlink(missing_ok=True)
             except OSError:
                 logger.exception('Unreferenzierte PDF konnte nicht entfernt werden')
+        raise
+
+
+def cancel_invoice(pk, *, reason, correct=False, settlement='', settlement_note=''):
+    """Atomically save the cancellation PDF, reserve its number and optionally copy a draft."""
+    created = []
+    try:
+        with transaction.atomic():
+            original = Invoice.objects.select_related('patient').get(pk=pk)
+            if not original.number or original.cancellation_of_id:
+                raise ValidationError('Nur fertige Originalrechnungen können storniert werden.')
+            if hasattr(original, 'cancellation'):
+                raise ValidationError('Diese Rechnung wurde bereits storniert.')
+            reason = reason.strip()
+            if not reason or len(reason) > 1000:
+                raise ValidationError('Bitte einen Stornogrund mit maximal 1000 Zeichen angeben.')
+            if settlement not in ['', 'pending', 'refund', 'offset'] or (original.paid_at and not settlement):
+                raise ValidationError('Bitte Rückzahlung oder Verrechnung festhalten.')
+            cancellation = Invoice.objects.create(patient=original.patient, invoice_type=original.invoice_type,
+                payment_method=original.payment_method, cash_date=original.cash_date,
+                diagnosis=original.diagnosis, cancellation_of=original, cancellation_reason=reason,
+                patient_snapshot=original.patient_snapshot, practice_snapshot=original.practice_snapshot,
+                settlement=settlement if original.paid_at else '', settlement_note=settlement_note)
+            for item in original.items.all():
+                InvoiceItem.objects.create(invoice=cancellation, date=item.date, code=item.code,
+                    description=item.description, quantity=item.quantity, price=item.price)
+            cancellation.date = timezone.localdate()
+            sequence, _ = NumberSequence.objects.get_or_create(year=cancellation.date.year)
+            cancellation.number = f'{sequence.year}-{sequence.next_number:03d}'
+            cancellation.finalized_at = timezone.now()
+            data = render_pdf(cancellation)
+            root = Path(settings.DATA_DIR) / 'pdfs'
+            root.mkdir(parents=True, exist_ok=True)
+            path = root / f'{cancellation.number}-{uuid.uuid4().hex}-storno.pdf'
+            with path.open('xb') as stream:
+                created.append(path)
+                stream.write(data)
+            cancellation.pdf_path = f'pdfs/{path.name}'
+            cancellation.pdf_sha256 = hashlib.sha256(data).hexdigest()
+            cancellation.save()
+            sequence.next_number += 1
+            sequence.save()
+            draft = None
+            if correct:
+                # A paid original never marks the replacement as paid automatically.
+                draft = Invoice.objects.create(patient=original.patient, invoice_type=original.invoice_type,
+                    payment_method='transfer', diagnosis=original.diagnosis, beihilfe=original.beihilfe,
+                    correction_of=original)
+                for item in original.items.all():
+                    InvoiceItem.objects.create(invoice=draft, date=item.date, code=item.code,
+                        description=item.description, quantity=item.quantity, price=item.price)
+            return cancellation, draft
+    except Exception:
+        for path in created:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.exception('Unreferenzierte Storno-PDF konnte nicht entfernt werden')
         raise

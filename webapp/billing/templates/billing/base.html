@@ -1,6 +1,6 @@
 {% load static %}<!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{% block title %}SUPER · Rechnungsmanager{% endblock %}</title><link rel="stylesheet" href="{% static 'billing/app.css' %}"><script src="{% static 'billing/app.js' %}" defer></script></head>
-<body><div class="shell"><aside class="sidebar"><a class="brand" href="{% url 'dashboard' %}"><span class="brand-icon">S</span><span>SUPER<small>Steffis Rechnungsmanager</small></span></a>
+<body data-theme="{{ ui_practice.color_scheme|default:'green' }}"><div class="shell"><aside class="sidebar"><a class="brand" href="{% url 'dashboard' %}">{% if ui_practice.logo %}<img class="brand-logo" src="{% url 'practice_logo' %}" alt="Praxislogo">{% else %}<span class="brand-icon">S</span>{% endif %}<span>SUPER<small>Steffis Rechnungsmanager</small></span></a>
 <div class="nav-label">DEINE PRAXIS</div><nav aria-label="Hauptnavigation">
 <a class="{% if nav == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><span>◈</span> Übersicht</a>
 <a class="{% if nav == 'patients' %}active{% endif %}" href="{% url 'patients' %}"><span>◎</span> Patienten</a>

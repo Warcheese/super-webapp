@@ -26,7 +26,8 @@ TEMPLATES = [{'BACKEND': 'django.template.backends.django.DjangoTemplates',
               'APP_DIRS': True, 'OPTIONS': {'context_processors': [
                   'django.template.context_processors.request',
                   'django.contrib.auth.context_processors.auth',
-                  'django.contrib.messages.context_processors.messages']}}]
+                  'django.contrib.messages.context_processors.messages',
+                  'billing.context_processors.appearance']}}]
 WSGI_APPLICATION = 'config.wsgi.application'
 DATA_DIR = Path(os.getenv('SUPER_DATA_DIR', str(BASE_DIR / 'data')))
 DATA_DIR.mkdir(parents=True, exist_ok=True)

@@ -2,6 +2,9 @@ from django.urls import path
 from . import views as v
 
 urlpatterns = [
+    path('rechnungen/<int:pk>/stornieren/', v.invoice_cancel, name='invoice_cancel'),
+    path('rechnungen/<int:pk>/korrigieren/', v.invoice_cancel, {'correct': True}, name='invoice_correct'),
+    path('rechnungen/<int:pk>/ausgleich/', v.invoice_settlement, name='invoice_settlement'),
     path('patienten/<int:pk>/loeschen/', v.patient_delete, name='patient_delete'),
     path('rechnungen/<int:pk>/loeschen/', v.invoice_delete, name='invoice_delete'),
     path('vorlagen/<int:pk>/loeschen/', v.template_delete, name='template_delete'),

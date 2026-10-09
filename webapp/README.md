@@ -14,7 +14,7 @@ Lokaler Rechnungsmanager mit deutscher Oberfläche, Django, SQLite und direkter 
 - Übernahme der bisherigen Patienten-, Vorlagen- und Rechnungs-CSVs.
 - Responsive Oberfläche ohne externe Schriftarten, CDNs oder externe Dienste.
 - Optionales Firmenlogo (PNG/JPEG) und Brief-Layout nach der ursprünglichen Rechnungsvorlage.
-- „Grüße vom Entwickler“ standardmäßig deaktiviert; eigene Begrüßungstexte bleiben in deiner Datenbank.
+- „Grüße vom Entwickler“ standardmäßig deaktiviert; 59 zufällige Originalnachrichten.
 
 ## Unraid: erster Start
 
@@ -110,7 +110,7 @@ Zusätzlich `.env` getrennt und geschützt sichern. Bei Wiederherstellung den Co
 
 Unter **Einstellungen** kannst du ein Firmenlogo als PNG oder JPEG hochladen (maximal 2 MB und 4 Millionen Pixel). Ohne Upload enthält die Rechnung kein Logo. Du kannst das aktuelle Logo dort ansehen, ersetzen oder entfernen. Logos werden als normalisierte PNG-Dateien mit eindeutigen Namen im Datenordner gespeichert, nicht im Git-Repository. Frühere Logo-Dateien bleiben für die Rechnungsstände erhalten. Bereits fertig gespeicherte PDFs werden durch einen Logo-Wechsel nicht verändert.
 
-Die Checkbox **Grüße vom Entwickler** ist für neue und vorhandene Installationen zunächst aus. Nur wenn sie aktiv ist, erscheint auf der Übersicht ein zufälliger Gruß. Über **Eigene Begrüßungsnachrichten** kannst du persönliche Texte eintragen, einen pro Zeile. Sie liegen ausschließlich in deiner lokalen Datenbank. Bleibt das Feld leer, verwendet die App eine kleine allgemeine Auswahl.
+Die Checkbox **Grüße vom Entwickler** ist standardmäßig aus. Nur wenn sie aktiv ist, erscheint auf der Übersicht zufällig eine der 59 Originalnachrichten.
 
 Im Rechnungsfilter gibt es **Alle Rechnungen**, **Offen**, **Bezahlt** und **Entwurf**.
 
@@ -152,10 +152,20 @@ Nur für eine leere Testinstallation: `python manage.py demo_data`. Legt synthet
 
 GitHub Actions prüft die WebApp, Migrationen, Tests und Docker-Build bei Änderungen. Der lokale Django-Entwicklungsserver ist nicht der Produktionsserver; im Container läuft Gunicorn.
 
-## Löschen
+## Storno, Korrektur und Löschen
 
-Patienten, Rechnungen und Leistungsvorlagen lassen sich über „Löschen“ entfernen. Eine Bestätigungsseite verhindert versehentliches Löschen. Beim Löschen einer Rechnung werden auch die Leistungszeilen, das PDF und die Zweitschrift entfernt; die Nummernfolge wird nicht zurückgesetzt. Patienten mit bestehenden Rechnungen sind geschützt: Zuerst die zugehörigen Rechnungen löschen. Das Löschen einer Leistungsvorlage verändert vorhandene Rechnungen nicht.
+Fertige Rechnungen bleiben erhalten und können nicht mehr gelöscht werden. „Stornieren“ erstellt nach Bestätigung und Angabe eines Grundes eine Stornorechnung mit eigener Nummer, Bezug zum Original und negativem Betrag. Die Originalrechnung wird als „Storniert“ angezeigt und zählt nicht mehr als offene Forderung. Die PDFs des Originals bleiben unverändert.
 
-Bei „Privat / GebüH“ enthält das PDF unabhängig von der Zahlungsart den Hinweis zu analogen Leistungsziffern. Bei Überweisung wird die eingestellte Zahlungsfrist genannt. Bereits ausgestellte PDFs werden nicht nachträglich geändert.
+„Stornieren und korrigieren“ legt zusätzlich einen bearbeitbaren Korrekturentwurf an. Nach Prüfung erhält die Ersatzrechnung eine neue Nummer. Original, Storno und Korrektur sind auf ihren Detailseiten verknüpft. Auch bei bezahltem Original wird die Ersatzrechnung nicht automatisch als bezahlt markiert. Die Zahlungsart des Korrekturentwurfs ist zunächst Überweisung; Barzahlung kann bei Bedarf ausdrücklich gewählt werden.
+
+Bei bezahlten Originalen muss Rückzahlung / Verrechnung festgehalten werden (noch offen, Rückzahlung erledigt, Verrechnung vereinbart). Der Stand und eine Notiz lassen sich auf der Stornoseite später aktualisieren. Das löst keine Zahlung aus und verändert das gespeicherte Storno-PDF nicht.
+
+Entwürfe und Leistungsvorlagen können nach Bestätigung gelöscht werden. Patienten mit bestehenden Rechnungen bleiben geschützt. Das Löschen einer Leistungsvorlage verändert vorhandene Rechnungsleistungen nicht.
+
+## Oberfläche
+
+Das hochgeladene Firmenlogo ersetzt das S im Menü. Ohne Logo bleibt das S erhalten. In den Einstellungen stehen Grün (Standard), Blau, Violett, Rosé und Dunkel zur Wahl; das Farbschema gilt für die gemeinsame Praxisoberfläche und verändert keine Rechnungs-PDFs.
+
+Die Checkbox „Grüße vom Entwickler“ ist standardmäßig aus. Wenn aktiviert, wird bei jedem Aufruf der Übersicht zufällig eine der 59 Originalnachrichten angezeigt. Eigene Begrüßungsnachrichten werden nicht mehr angeboten; das bisherige Feld wird bei der Migration entfernt.
 
 Zahlungsarten: Überweisung und Barzahlung. Die frühere Auswahl „Privatkasse“ wird beim Update automatisch in „Überweisung“ umgewandelt; gespeicherte PDFs bleiben unverändert.

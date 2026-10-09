@@ -59,8 +59,7 @@ class Practice(models.Model):
     payment_days = models.PositiveIntegerField('Zahlungsfrist (Tage)', default=14, validators=[MinValueValidator(1)])
     logo = models.FileField('Firmenlogo', upload_to=logo_upload_path, blank=True)
     developer_greetings = models.BooleanField('Grüße vom Entwickler', default=False)
-    greeting_messages = models.TextField('Eigene Begrüßungsnachrichten', blank=True, max_length=20000,
-        help_text='Optional: ein Spruch pro Zeile. Diese Texte werden nur in deiner lokalen Datenbank gespeichert.')
+    color_scheme = models.CharField('Farbschema', max_length=12, default='green', choices=[('green', 'Grün (Standard)'), ('blue', 'Blau'), ('purple', 'Violett'), ('rose', 'Rosé'), ('dark', 'Dunkel')])
 
 
 class NumberSequence(models.Model):
@@ -88,6 +87,11 @@ class Invoice(models.Model):
     pdf_sha256 = models.CharField(max_length=64, blank=True)
     copy_sha256 = models.CharField(max_length=64, blank=True)
     revision = models.PositiveIntegerField(default=0)
+    cancellation_of = models.OneToOneField('self', null=True, blank=True, on_delete=models.PROTECT, related_name='cancellation')
+    correction_of = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT, related_name='corrections')
+    cancellation_reason = models.TextField('Stornogrund', blank=True, max_length=1000)
+    settlement = models.CharField('Rückzahlung / Verrechnung', max_length=12, blank=True, choices=[('pending', 'Noch offen'), ('refund', 'Rückzahlung erledigt'), ('offset', 'Verrechnung vereinbart')])
+    settlement_note = models.CharField('Notiz zur Rückzahlung / Verrechnung', max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -95,10 +99,15 @@ class Invoice(models.Model):
 
     @property
     def total(self):
-        return sum((item.total for item in self.items.all()), Decimal('0.00'))
+        value = sum((item.total for item in self.items.all()), Decimal('0.00'))
+        return -value if self.cancellation_of_id else value
 
     @property
     def status(self):
+        if self.cancellation_of_id:
+            return 'Stornorechnung'
+        if hasattr(self, 'cancellation'):
+            return 'Storniert'
         return 'Bezahlt' if self.paid_at else ('Offen' if self.number else 'Entwurf')
 
     @property

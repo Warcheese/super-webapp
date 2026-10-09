@@ -64,6 +64,5 @@ MESSAGES = (
 )
 
 
-def random_greeting(custom_messages=""):
-    messages = [line.strip() for line in custom_messages.splitlines() if line.strip()]
-    return choice(messages or MESSAGES)
+def random_greeting():
+    return choice(MESSAGES)

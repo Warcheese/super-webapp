@@ -15,9 +15,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-from .forms import PatientForm, InvoiceForm, ItemFormSet, PracticeForm, ServiceForm, SequenceForm, CSVImportForm
+from .forms import PatientForm, InvoiceForm, ItemFormSet, PracticeForm, ServiceForm, SequenceForm, CSVImportForm, CancellationForm
 from .models import Patient, Invoice, Practice, ServiceTemplate, NumberSequence, LoginAttempt
-from .services import finalize_invoice, frozen_preview
+from .services import finalize_invoice, frozen_preview, cancel_invoice
 from .pdf import render_pdf
 from .importers import import_patients, import_templates, import_items
 from .greetings import random_greeting
@@ -56,12 +56,12 @@ class SuperLoginView(LoginView):
 
 @login_required
 def dashboard(request):
-    invoices = Invoice.objects.select_related('patient').prefetch_related('items')
-    open_invoices = invoices.filter(number__isnull=False, paid_at__isnull=True)
+    invoices = Invoice.objects.select_related('patient', 'cancellation', 'cancellation_of', 'correction_of').prefetch_related('items')
+    open_invoices = invoices.filter(number__isnull=False, paid_at__isnull=True, cancellation__isnull=True, cancellation_of__isnull=True)
     practice = Practice.objects.filter(pk=1).first()
     return render(request, 'billing/dashboard.html', {
         'recent': invoices[:6], 'patients_count': Patient.objects.filter(active=True).count(),
-        'greeting': random_greeting(practice.greeting_messages) if practice and practice.developer_greetings else '',
+        'greeting': random_greeting() if practice and practice.developer_greetings else '',
         'drafts_count': invoices.filter(number__isnull=True).count(),
         'open_count': open_invoices.count(), 'open_total': sum(i.total for i in open_invoices),
         'nav': 'dashboard'})
@@ -96,14 +96,16 @@ def patient_detail(request, pk):
 
 @login_required
 def invoices(request):
-    records = Invoice.objects.select_related('patient').prefetch_related('items')
+    records = Invoice.objects.select_related('patient', 'cancellation', 'cancellation_of', 'correction_of').prefetch_related('items')
     status = request.GET.get('status', '')
     if status == 'draft':
         records = records.filter(number__isnull=True)
     elif status == 'open':
-        records = records.filter(number__isnull=False, paid_at__isnull=True)
+        records = records.filter(number__isnull=False, paid_at__isnull=True, cancellation__isnull=True, cancellation_of__isnull=True)
     elif status == 'paid':
-        records = records.filter(paid_at__isnull=False)
+        records = records.filter(paid_at__isnull=False, cancellation__isnull=True, cancellation_of__isnull=True)
+    elif status == 'cancelled':
+        records = records.filter(Q(cancellation__isnull=False) | Q(cancellation_of__isnull=False))
     query = request.GET.get('q', '').strip()
     if query:
         records = records.filter(Q(number__icontains=query)|Q(patient__last_name__icontains=query)|
@@ -145,7 +147,7 @@ def invoice_edit(request, pk=None):
 
 @login_required
 def invoice_detail(request, pk):
-    obj = get_object_or_404(Invoice.objects.select_related('patient').prefetch_related('items'), pk=pk)
+    obj = get_object_or_404(Invoice.objects.select_related('patient', 'cancellation', 'cancellation_of', 'correction_of').prefetch_related('items'), pk=pk)
     return render(request, 'billing/invoice_detail.html', {'invoice': obj, 'nav': 'invoices'})
 
 
@@ -172,7 +174,9 @@ def invoice_finalize(request, pk):
 def invoice_paid(request, pk):
     with transaction.atomic():
         obj = get_object_or_404(Invoice, pk=pk)
-        if not obj.number:
+        if obj.cancellation_of_id or hasattr(obj, 'cancellation'):
+            messages.error(request, 'Stornierte Rechnungen können nicht als bezahlt markiert werden.')
+        elif not obj.number:
             messages.error(request, 'Bitte zuerst die Rechnung erstellen.')
         else:
             if not obj.paid_at:
@@ -184,7 +188,7 @@ def invoice_paid(request, pk):
 
 @login_required
 def invoice_pdf(request, pk):
-    obj = get_object_or_404(Invoice.objects.select_related('patient'), pk=pk)
+    obj = get_object_or_404(Invoice.objects.select_related('patient', 'cancellation', 'cancellation_of', 'correction_of'), pk=pk)
     if not obj.number:
         response = HttpResponse(render_pdf(frozen_preview(obj), preview=True), content_type='application/pdf')
         response['Content-Disposition'] = 'inline; filename="SUPER-Entwurf.pdf"'
@@ -316,8 +320,15 @@ def patient_delete(request, pk):
 @login_required
 def invoice_delete(request, pk):
     obj = get_object_or_404(Invoice, pk=pk)
+    if obj.number:
+        messages.error(request, 'Fertige Rechnungen können nicht gelöscht werden. Bitte die Stornofunktion verwenden.')
+        return redirect('invoice_detail', pk=pk)
     if request.method == 'POST' and request.POST.get('confirm') == 'yes':
         with transaction.atomic():
+            obj = get_object_or_404(Invoice, pk=pk)
+            if obj.number:
+                messages.error(request, 'Der Entwurf wurde inzwischen erstellt. Bitte die Stornofunktion verwenden.')
+                return redirect('invoice_detail', pk=pk)
             root = Path(django_settings.DATA_DIR).resolve()
             paths = []
             for relative in [obj.pdf_path, obj.copy_path]:
@@ -351,3 +362,45 @@ def template_delete(request, pk):
     return render(request, 'billing/delete_confirm.html', {'title': 'Leistungsvorlage löschen', 'object_name': str(obj),
         'warning': 'Die Vorlage wird dauerhaft gelöscht. Bestehende Rechnungen bleiben unverändert.',
         'cancel_url': reverse('template_edit', args=[pk]), 'nav': 'templates'})
+
+
+@login_required
+def invoice_cancel(request, pk, correct=False):
+    obj = get_object_or_404(Invoice, pk=pk)
+    if not obj.number or obj.cancellation_of_id or hasattr(obj, 'cancellation'):
+        messages.error(request, 'Diese Rechnung kann nicht storniert werden.')
+        return redirect('invoice_detail', pk=pk)
+    form = CancellationForm(request.POST or None, paid=bool(obj.paid_at),
+        initial={'settlement': 'pending' if obj.paid_at else ''})
+    if request.method == 'POST' and form.is_valid():
+        try:
+            cancellation, draft = cancel_invoice(pk, reason=form.cleaned_data['reason'], correct=correct,
+                settlement=form.cleaned_data['settlement'], settlement_note=form.cleaned_data['settlement_note'])
+            messages.success(request, 'Stornorechnung erstellt. Die Originalrechnung bleibt erhalten.')
+            return redirect('invoice_edit', pk=draft.pk) if draft else redirect('invoice_detail', pk=cancellation.pk)
+        except ValidationError as exc:
+            form.add_error(None, ' '.join(exc.messages))
+        except Exception:
+            logger.exception('Stornierung fehlgeschlagen, invoice_id=%s', pk)
+            form.add_error(None, 'Die Stornierung ist fehlgeschlagen. Die Originalrechnung bleibt unverändert; bitte erneut versuchen.')
+    return render(request, 'billing/cancel.html', {'invoice': obj, 'form': form, 'correct': correct, 'nav': 'invoices'})
+
+
+@login_required
+@require_POST
+def invoice_settlement(request, pk):
+    obj = get_object_or_404(Invoice, pk=pk, cancellation_of__isnull=False)
+    if not obj.cancellation_of.paid_at:
+        raise Http404
+    form = CancellationForm(request.POST, paid=True)
+    # Settlement update is separate from the frozen cancellation PDF.
+    form.fields.pop('reason')
+    form.fields.pop('confirm')
+    if form.is_valid():
+        obj.settlement = form.cleaned_data['settlement']
+        obj.settlement_note = form.cleaned_data['settlement_note']
+        obj.save(update_fields=['settlement', 'settlement_note'])
+        messages.success(request, 'Rückzahlung / Verrechnung aktualisiert. Das gespeicherte PDF bleibt unverändert.')
+    else:
+        messages.error(request, 'Bitte gültige Angaben zur Rückzahlung / Verrechnung eingeben.')
+    return redirect('invoice_detail', pk=pk)

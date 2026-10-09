@@ -32,8 +32,7 @@ class PracticeForm(StyledModelForm):
     class Meta:
         model = Practice
         fields = ['name', 'profession', 'street', 'city', 'phone', 'bank', 'iban', 'bic', 'tax_text', 'payment_days',
-                  'logo', 'developer_greetings', 'greeting_messages']
-        widgets = {'greeting_messages': forms.Textarea(attrs={'rows': 4})}
+                  'logo', 'developer_greetings', 'color_scheme']
 
     def clean_logo(self):
         file = self.cleaned_data.get('logo')
@@ -118,3 +117,17 @@ class CSVImportForm(forms.Form):
         if file.size > 2 * 1024 * 1024:
             raise forms.ValidationError('Maximal 2 MB pro CSV-Datei.')
         return file
+
+
+class CancellationForm(forms.Form):
+    reason = forms.CharField(label='Stornogrund', max_length=1000, widget=forms.Textarea(attrs={'rows': 3}))
+    settlement = forms.ChoiceField(label='Rückzahlung / Verrechnung', required=False,
+        choices=[('', 'Nicht erforderlich (unbezahlt)'), ('pending', 'Noch offen'), ('refund', 'Rückzahlung erledigt'), ('offset', 'Verrechnung vereinbart')])
+    settlement_note = forms.CharField(label='Notiz zur Rückzahlung / Verrechnung', max_length=500, required=False)
+    confirm = forms.BooleanField(label='Ich möchte diese Rechnung endgültig stornieren')
+
+    def __init__(self, *args, paid=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if paid:
+            self.fields['settlement'].choices = self.fields['settlement'].choices[1:]
+            self.fields['settlement'].required = True
