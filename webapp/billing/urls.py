@@ -18,6 +18,7 @@ urlpatterns = [
     path('vorlagen/neu/', v.template_edit, name='template_new'),
     path('vorlagen/<int:pk>/', v.template_edit, name='template_edit'),
     path('einstellungen/', v.practice_settings, name='settings'),
+    path('einstellungen/logo/', v.practice_logo, name='practice_logo'),
     path('einstellungen/nummer/', v.sequence_update, name='sequence_update'),
     path('import/<str:kind>/', v.csv_import, name='csv_import'),
     path('rechnungen/<int:pk>/import/', v.csv_import, {'kind': 'items'}, name='items_import'),

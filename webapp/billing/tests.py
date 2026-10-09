@@ -18,7 +18,7 @@ class BillingTests(TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        setting = override_settings(DATA_DIR=Path(self.tmp.name))
+        setting = override_settings(DATA_DIR=Path(self.tmp.name), MEDIA_ROOT=Path(self.tmp.name))
         setting.enable()
         self.addCleanup(setting.disable)
         self.user = get_user_model().objects.create_user('steffi', password='test-password-super')
@@ -239,3 +239,110 @@ class BillingTests(TestCase):
         with self.assertRaises(ValidationError):
             finalize_invoice(self.invoice.pk, 0)
         self.assertFalse(NumberSequence.objects.exists())
+
+    def practice_data(self):
+        return {name:getattr(self.practice,name) for name in [
+            'name','profession','street','city','phone','bank','iban','bic','tax_text','payment_days']}
+
+    def logo_file(self, color='green'):
+        from io import BytesIO
+        from PIL import Image
+        stream = BytesIO()
+        Image.new('RGB',(120,80),color).save(stream,format='PNG')
+        return SimpleUploadedFile('logo.png',stream.getvalue(),content_type='image/png')
+
+    def test_greetings_disabled_by_default(self):
+        self.assertFalse(self.practice.developer_greetings)
+        self.assertNotContains(self.client.get(reverse('dashboard')), 'personal-greeting')
+        self.assertNotContains(self.client.get(reverse('settings')), 'name="developer_greetings" checked')
+
+    def test_greetings_setting_enables_and_disables_message(self):
+        data=self.practice_data() | {'developer_greetings':'on','greeting_messages':'Eigener Gruß <3'}
+        response=self.client.post(reverse('settings'),data)
+        self.assertEqual(response.status_code,302)
+        self.assertContains(self.client.get(reverse('dashboard')),'Eigener Gruß &lt;3')
+        self.client.post(reverse('settings'),self.practice_data())
+        self.assertNotContains(self.client.get(reverse('dashboard')),'personal-greeting')
+
+    def test_draft_filter_keeps_only_drafts(self):
+        draft=Invoice.objects.create(patient=self.patient)
+        issued=finalize_invoice(self.invoice.pk,0)
+        response=self.client.get(reverse('invoices'),{'status':'draft'})
+        self.assertContains(response,reverse('invoice_detail',args=[draft.pk]))
+        self.assertNotContains(response,issued.number)
+        self.assertContains(response,'>Entwurf</option>')
+
+    def test_logo_upload_preview_and_clear(self):
+        self.assertEqual(self.client.post(reverse('settings'),self.practice_data() | {'logo':self.logo_file()}).status_code,302)
+        self.practice.refresh_from_db()
+        old_path=self.practice.logo.name
+        self.assertTrue(old_path.startswith('logos/'))
+        self.assertTrue((Path(self.tmp.name)/old_path).is_file())
+        self.assertEqual(self.client.get(reverse('practice_logo')).status_code,200)
+        self.client.post(reverse('settings'),self.practice_data() | {'remove_logo':'on'})
+        self.practice.refresh_from_db()
+        self.assertFalse(self.practice.logo)
+        self.assertEqual(self.client.get(reverse('practice_logo')).status_code,404)
+        # Preserve versions potentially referenced by existing invoices.
+        self.assertTrue((Path(self.tmp.name)/old_path).is_file())
+
+    def test_logo_requires_authentication(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('practice_logo')).status_code,302)
+
+    def test_invalid_logo_rejected(self):
+        invalid=SimpleUploadedFile('bad.png',b'not an image',content_type='image/png')
+        self.assertContains(self.client.post(reverse('settings'),self.practice_data() | {'logo':invalid}),'nicht als Logo')
+        self.practice.refresh_from_db()
+        self.assertFalse(self.practice.logo)
+
+    def test_oversize_logo_rejected(self):
+        huge=SimpleUploadedFile('huge.png',b'x'*(2*1024*1024+1),content_type='image/png')
+        self.assertContains(self.client.post(reverse('settings'),self.practice_data() | {'logo':huge}),'maximal 2 MB')
+
+    def test_logo_cannot_be_removed_and_uploaded_together(self):
+        response=self.client.post(reverse('settings'),self.practice_data() | {'logo':self.logo_file(),'remove_logo':'on'})
+        self.assertContains(response,'entweder ein neues Logo')
+
+    def test_logo_snapshot_and_pdf_survive_replacement(self):
+        self.client.post(reverse('settings'),self.practice_data() | {'logo':self.logo_file()})
+        self.practice.refresh_from_db()
+        first_logo=self.practice.logo.name
+        issued=finalize_invoice(self.invoice.pk,0)
+        original=(Path(self.tmp.name)/issued.pdf_path).read_bytes()
+        self.assertEqual(issued.practice_snapshot['logo'],first_logo)
+        self.client.post(reverse('settings'),self.practice_data() | {'logo':self.logo_file('blue')})
+        self.practice.refresh_from_db()
+        self.assertNotEqual(self.practice.logo.name,first_logo)
+        self.assertTrue((Path(self.tmp.name)/first_logo).exists())
+        self.assertEqual((Path(self.tmp.name)/issued.pdf_path).read_bytes(),original)
+
+    def test_pdf_images_optional_and_has_page_totals(self):
+        from io import BytesIO
+        from billing.services import frozen_preview
+        from billing.pdf import render_pdf
+        from pypdf import PdfReader
+        # The runtime-only inspection dependency is not required by the app.
+        data=render_pdf(frozen_preview(self.invoice),preview=True)
+        pdf=PdfReader(BytesIO(data))
+        self.assertFalse(list(pdf.pages[0].images))
+        self.assertIn('Seite 1 von 1',pdf.pages[0].extract_text())
+        self.client.post(reverse('settings'),self.practice_data() | {'logo':self.logo_file()})
+        issued=finalize_invoice(self.invoice.pk,0)
+        pdf=PdfReader(Path(self.tmp.name)/issued.pdf_path)
+        self.assertTrue(list(pdf.pages[0].images))
+
+    def test_multipage_pdf_repeats_header_logo_and_page_totals(self):
+        from billing.services import frozen_preview
+        from billing.pdf import render_pdf
+        from pypdf import PdfReader
+        from io import BytesIO
+        self.client.post(reverse('settings'),self.practice_data() | {'logo':self.logo_file()})
+        for _ in range(65):
+            InvoiceItem.objects.create(invoice=self.invoice,description='Längere Leistungsbeschreibung mit Übung und Massage',price='15.00')
+        pdf=PdfReader(BytesIO(render_pdf(frozen_preview(self.invoice),preview=True)))
+        self.assertGreater(len(pdf.pages),1)
+        for index,page in enumerate(pdf.pages,start=1):
+            self.assertIn(f'Seite {index} von {len(pdf.pages)}',page.extract_text())
+            self.assertIn('RECHNUNGSNUMMER',page.extract_text())
+            self.assertTrue(list(page.images))

@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 def practice_snapshot(practice):
-    return {f.name: getattr(practice, f.name) for f in practice._meta.fields if f.name != 'id'}
+    # UI preferences and personal greetings are unrelated to invoice content.
+    fields = ['name', 'profession', 'street', 'city', 'phone', 'bank', 'iban', 'bic', 'tax_text', 'payment_days']
+    return {name: getattr(practice, name) for name in fields} | {'logo': practice.logo.name or ''}
 
 
 def frozen_preview(invoice):

@@ -13,6 +13,8 @@ Lokaler Rechnungsmanager mit deutscher Oberfläche, Django, SQLite und direkter 
 - Unveränderliche fertige Rechnungen in der WebApp, PDF-Prüfsummen, Zahlungsstatus.
 - Übernahme der bisherigen Patienten-, Vorlagen- und Rechnungs-CSVs.
 - Responsive Oberfläche ohne externe Schriftarten, CDNs oder externe Dienste.
+- Optionales Firmenlogo (PNG/JPEG) und Brief-Layout nach der ursprünglichen Rechnungsvorlage.
+- „Grüße vom Entwickler“ standardmäßig deaktiviert; eigene Begrüßungstexte bleiben in deiner Datenbank.
 
 ## Unraid: erster Start
 
@@ -89,11 +91,11 @@ Eine Nummer wird erst beim endgültigen Erstellen vergeben. Erstellung und Numme
 
 Beim Erstellen ist das Rechnungsdatum der aktuelle Tag. Die PDF-Dateien erhalten eindeutige Namen und werden exklusiv angelegt. Bei normalen Schreib-/PDF-Fehlern wird die Transaktion zurückgerollt und neu erzeugte Dateien werden entfernt. Ein harter Prozessabbruch kann unreferenzierte PDF-Dateien hinterlassen; sie werden nicht als Rechnung angezeigt. Der Betrieb setzt eine einzelne App-Instanz auf derselben lokalen SQLite-Datenbank voraus.
 
-Der PDF-Aufbau ist neu implementiert und entspricht nicht pixelgenau der bisherigen LaTeX-Vorlage. Praxisangaben und Steuerhinweis sind konfigurierbar. Vor Nutzung die ersten PDFs fachlich und optisch prüfen. Die Anwendung bietet noch keinen Storno-/Korrekturrechnungsablauf, keine Mahnungen, keine E-Rechnung und keine automatische rechtliche Prüfung. Fertige Rechnungen lassen sich daher in dieser Version bewusst nicht bearbeiten oder löschen. PDF-Prüfsummen ersetzen kein revisionssicheres Archiv.
+Der PDF-Aufbau ist am ursprünglichen Brief-Layout orientiert: optionales Logo und Praxisdaten links, Rechnungsdaten rechts, Empfängeranschrift, Anrede, schlichte Leistungstabelle und Fußzeile mit Seitenzahl. Schrift und Umbrüche entsprechen nicht pixelgenau LaTeX. Praxisangaben und Steuerhinweis sind konfigurierbar. Vor Nutzung die ersten PDFs fachlich und optisch prüfen. Die Anwendung bietet noch keinen Storno-/Korrekturrechnungsablauf, keine Mahnungen, keine E-Rechnung und keine automatische rechtliche Prüfung. Fertige Rechnungen lassen sich daher in dieser Version bewusst nicht bearbeiten oder löschen. PDF-Prüfsummen ersetzen kein revisionssicheres Archiv.
 
 ## Datensicherung & Wiederherstellung
 
-**Datenbank und PDFs immer gemeinsam sichern.** Alles liegt unter `SUPER_DATA_PATH`: `super.sqlite3` und `pdfs/`. Am einfachsten den Container stoppen, den gesamten Datenordner sichern und danach starten:
+**Datenbank und PDFs immer gemeinsam sichern.** Alles liegt unter `SUPER_DATA_PATH`: `super.sqlite3`, `pdfs/` und `logos/`. Am einfachsten den Container stoppen, den gesamten Datenordner sichern und danach starten:
 
 ```sh
 docker compose stop super
@@ -103,6 +105,28 @@ docker compose start super
 
 Zusätzlich `.env` getrennt und geschützt sichern. Bei Wiederherstellung den Container stoppen, Datenordner vollständig wiederherstellen, Besitzer/Berechtigungen prüfen und starten. Code bzw. Docker-Image allein enthalten keine Patientendaten. Für Updates ebenfalls zuerst sichern, dann `docker compose up -d --build`. Datenbankmigrationen laufen beim Start automatisch.
 
+
+## Logo und Begrüßungen
+
+Unter **Einstellungen** kannst du ein Firmenlogo als PNG oder JPEG hochladen (maximal 2 MB und 4 Millionen Pixel). Ohne Upload enthält die Rechnung kein Logo. Du kannst das aktuelle Logo dort ansehen, ersetzen oder entfernen. Logos werden als normalisierte PNG-Dateien mit eindeutigen Namen im Datenordner gespeichert, nicht im Git-Repository. Frühere Logo-Dateien bleiben für die Rechnungsstände erhalten. Bereits fertig gespeicherte PDFs werden durch einen Logo-Wechsel nicht verändert.
+
+Die Checkbox **Grüße vom Entwickler** ist für neue und vorhandene Installationen zunächst aus. Nur wenn sie aktiv ist, erscheint auf der Übersicht ein zufälliger Gruß. Über **Eigene Begrüßungsnachrichten** kannst du persönliche Texte eintragen, einen pro Zeile. Sie liegen ausschließlich in deiner lokalen Datenbank. Bleibt das Feld leer, verwendet die App eine kleine allgemeine Auswahl.
+
+Im Rechnungsfilter gibt es **Alle Rechnungen**, **Offen**, **Bezahlt** und **Entwurf**.
+
+## Update deiner Unraid-Installation
+
+Bei der im Gespräch eingerichteten Installation liegt der Code unter `/mnt/user/docker/super-webapp` und der Datenordner unter `/mnt/user/docker/super-data`. Den Container stoppen und den gesamten Datenordner sichern, bevor du aktualisierst. Im Unraid-Terminal:
+
+```sh
+cd /mnt/user/docker/super-webapp
+git pull --ff-only
+cd webapp
+docker build -t super-webapp:local .
+```
+
+Bei erfolgreichem Build in Unraid **Docker → super-webapp → Edit → Apply** wählen, damit ein Container aus dem neuen Image erstellt wird. Die vorhandene Einbindung `/mnt/user/docker/super-data` nach `/data` und alle Variablen beibehalten. Ein bloßer Neustart verwendet noch das alte Image. Die neue Datenbankmigration ergänzt die Einstellungen automatisch; vorhandene Patienten, Rechnungen und PDFs bleiben erhalten.
+
 ## Lokal entwickeln und prüfen
 
 Python 3.12. In einem eigenen virtuellen Environment:
@@ -111,7 +135,7 @@ Python 3.12. In einem eigenen virtuellen Environment:
 python -m venv .venv
 # Linux: source .venv/bin/activate
 # Windows PowerShell: .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r requirements-test.txt
 ```
 
 Umgebungsvariable `DJANGO_SECRET_KEY` setzen; für lokalen Entwicklungsserver zusätzlich `DJANGO_DEBUG=1`. Unter Linux z.B. `export DJANGO_SECRET_KEY='nur-fuer-lokale-entwicklung'`; unter PowerShell `$env:DJANGO_SECRET_KEY='nur-fuer-lokale-entwicklung'`.

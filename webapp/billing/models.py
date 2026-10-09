@@ -2,6 +2,12 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
+from uuid import uuid4
+
+
+def logo_upload_path(instance, filename):
+    # Keep old logo versions: finalized invoices reference the version they used.
+    return f'logos/{uuid4().hex}.png'
 
 
 class Patient(models.Model):
@@ -51,6 +57,10 @@ class Practice(models.Model):
     bic = models.CharField('BIC', max_length=11, blank=True)
     tax_text = models.CharField('Steuerhinweis', max_length=300, default='Steuerfreie Leistung nach § 4 Nr. 14 UStG')
     payment_days = models.PositiveIntegerField('Zahlungsfrist (Tage)', default=14, validators=[MinValueValidator(1)])
+    logo = models.FileField('Firmenlogo', upload_to=logo_upload_path, blank=True)
+    developer_greetings = models.BooleanField('Grüße vom Entwickler', default=False)
+    greeting_messages = models.TextField('Eigene Begrüßungsnachrichten', blank=True, max_length=20000,
+        help_text='Optional: ein Spruch pro Zeile. Diese Texte werden nur in deiner lokalen Datenbank gespeichert.')
 
 
 class NumberSequence(models.Model):

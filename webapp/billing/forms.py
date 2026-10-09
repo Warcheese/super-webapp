@@ -1,6 +1,10 @@
 from django import forms
 from django.forms import inlineformset_factory
 from django.db.models import Q
+from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import UploadedFile
+from io import BytesIO
+from PIL import Image, ImageOps, UnidentifiedImageError
 from .models import Invoice, InvoiceItem, Patient, Practice, ServiceTemplate
 
 
@@ -20,9 +24,47 @@ class PatientForm(StyledModelForm):
 
 
 class PracticeForm(StyledModelForm):
+    logo = forms.FileField(label='Firmenlogo (PNG oder JPEG)', required=False,
+        widget=forms.FileInput(attrs={'accept': 'image/png,image/jpeg'}),
+        help_text='Optional, maximal 2 MB und 4 Millionen Pixel. Ohne Upload erscheint kein Logo auf der Rechnung.')
+    remove_logo = forms.BooleanField(label='Vorhandenes Logo entfernen', required=False)
+
     class Meta:
         model = Practice
-        fields = ['name', 'profession', 'street', 'city', 'phone', 'bank', 'iban', 'bic', 'tax_text', 'payment_days']
+        fields = ['name', 'profession', 'street', 'city', 'phone', 'bank', 'iban', 'bic', 'tax_text', 'payment_days',
+                  'logo', 'developer_greetings', 'greeting_messages']
+        widgets = {'greeting_messages': forms.Textarea(attrs={'rows': 4})}
+
+    def clean_logo(self):
+        file = self.cleaned_data.get('logo')
+        if not isinstance(file, UploadedFile):
+            return file
+        if file.size > 2 * 1024 * 1024:
+            raise forms.ValidationError('Das Logo darf maximal 2 MB groß sein.')
+        try:
+            with Image.open(file) as image:
+                if image.format not in {'PNG', 'JPEG'}:
+                    raise forms.ValidationError('Bitte ein PNG- oder JPEG-Logo hochladen.')
+                if image.width * image.height > 4_000_000:
+                    raise forms.ValidationError('Das Logo darf maximal 4 Millionen Pixel enthalten.')
+                image.load()
+                image = ImageOps.exif_transpose(image)
+                image.thumbnail((1200, 1200))
+                image = image.convert('RGBA' if 'A' in image.getbands() else 'RGB')
+                normalized = BytesIO()
+                image.save(normalized, format='PNG')
+        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+            raise forms.ValidationError('Diese Datei kann nicht als Logo gelesen werden.') from exc
+        return ContentFile(normalized.getvalue(), name='logo.png')
+
+    def clean(self):
+        data = super().clean()
+        if data.get('remove_logo'):
+            if isinstance(self.files.get('logo'), UploadedFile):
+                self.add_error('logo', 'Bitte entweder ein neues Logo hochladen oder das vorhandene entfernen.')
+            else:
+                data['logo'] = False
+        return data
 
 
 class ServiceForm(StyledModelForm):

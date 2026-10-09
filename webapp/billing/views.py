@@ -19,6 +19,7 @@ from .models import Patient, Invoice, Practice, ServiceTemplate, NumberSequence,
 from .services import finalize_invoice, frozen_preview
 from .pdf import render_pdf
 from .importers import import_patients, import_templates, import_items
+from .greetings import random_greeting
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +57,10 @@ class SuperLoginView(LoginView):
 def dashboard(request):
     invoices = Invoice.objects.select_related('patient').prefetch_related('items')
     open_invoices = invoices.filter(number__isnull=False, paid_at__isnull=True)
+    practice = Practice.objects.filter(pk=1).first()
     return render(request, 'billing/dashboard.html', {
         'recent': invoices[:6], 'patients_count': Patient.objects.filter(active=True).count(),
+        'greeting': random_greeting(practice.greeting_messages) if practice and practice.developer_greetings else '',
         'drafts_count': invoices.filter(number__isnull=True).count(),
         'open_count': open_invoices.count(), 'open_total': sum(i.total for i in open_invoices),
         'nav': 'dashboard'})
@@ -208,13 +211,27 @@ def invoice_pdf(request, pk):
 @login_required
 def practice_settings(request):
     obj, _ = Practice.objects.get_or_create(pk=1)
-    form = PracticeForm(request.POST or None, instance=obj)
+    form = PracticeForm(request.POST or None, request.FILES or None, instance=obj)
     if request.method == 'POST' and form.is_valid():
         form.save()
         messages.success(request, 'Praxisdaten gespeichert. Fertige Rechnungen bleiben unverändert.')
         return redirect('settings')
     sequence, _ = NumberSequence.objects.get_or_create(year=timezone.localdate().year)
-    return render(request, 'billing/settings.html', {'form': form, 'sequence_form': SequenceForm(initial={'next_number': sequence.next_number}), 'nav': 'settings'})
+    return render(request, 'billing/settings.html', {'form': form, 'practice': obj,
+        'sequence_form': SequenceForm(initial={'next_number': sequence.next_number}), 'nav': 'settings'})
+
+
+@login_required
+def practice_logo(request):
+    practice = get_object_or_404(Practice, pk=1)
+    if not practice.logo:
+        raise Http404('Kein Logo vorhanden.')
+    try:
+        response = FileResponse(practice.logo.open('rb'), content_type='image/png')
+    except OSError:
+        raise Http404('Logo nicht gefunden.')
+    response['Cache-Control'] = 'no-store, private'
+    return response
 
 
 @login_required
