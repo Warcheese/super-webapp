@@ -157,3 +157,5 @@ GitHub Actions prüft die WebApp, Migrationen, Tests und Docker-Build bei Änder
 Patienten, Rechnungen und Leistungsvorlagen lassen sich über „Löschen“ entfernen. Eine Bestätigungsseite verhindert versehentliches Löschen. Beim Löschen einer Rechnung werden auch die Leistungszeilen, das PDF und die Zweitschrift entfernt; die Nummernfolge wird nicht zurückgesetzt. Patienten mit bestehenden Rechnungen sind geschützt: Zuerst die zugehörigen Rechnungen löschen. Das Löschen einer Leistungsvorlage verändert vorhandene Rechnungen nicht.
 
 Bei „Privat / GebüH“ enthält das PDF unabhängig von der Zahlungsart den Hinweis zu analogen Leistungsziffern. Bei Überweisung wird die eingestellte Zahlungsfrist genannt. Bereits ausgestellte PDFs werden nicht nachträglich geändert.
+
+Zahlungsarten: Überweisung und Barzahlung. Die frühere Auswahl „Privatkasse“ wird beim Update automatisch in „Überweisung“ umgewandelt; gespeicherte PDFs bleiben unverändert.

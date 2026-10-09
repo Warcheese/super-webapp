@@ -70,7 +70,7 @@ class NumberSequence(models.Model):
 
 class Invoice(models.Model):
     TYPES = [('self', 'Selbstzahler'), ('private', 'Privat / GebüH')]
-    PAYMENTS = [('transfer', 'Überweisung'), ('cash', 'Barzahlung'), ('private', 'Privatkasse')]
+    PAYMENTS = [('transfer', 'Überweisung'), ('cash', 'Barzahlung')]
     patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name='invoices')
     date = models.DateField('Rechnungsdatum', default=timezone.localdate)
     diagnosis = models.TextField('Diagnose', blank=True, max_length=3000)

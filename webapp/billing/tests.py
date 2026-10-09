@@ -352,7 +352,7 @@ class BillingTests(TestCase):
         from pypdf import PdfReader
         from .pdf import render_pdf
         from .services import frozen_preview
-        for payment in ['transfer', 'private', 'cash']:
+        for payment in ['transfer', 'cash']:
             self.invoice.invoice_type = 'private'
             self.invoice.payment_method = payment
             self.invoice.cash_date = date(2026, 1, 1)
@@ -362,7 +362,7 @@ class BillingTests(TestCase):
             if payment != 'cash':
                 self.assertIn('innerhalb von 14 Tagen', text)
         self.invoice.invoice_type = 'self'
-        self.invoice.payment_method = 'private'
+        self.invoice.payment_method = 'transfer'
         text = PdfReader(BytesIO(render_pdf(frozen_preview(self.invoice), preview=True))).pages[0].extract_text()
         self.assertNotIn('analogen Leistungsziffern', text)
 
@@ -409,3 +409,26 @@ class BillingTests(TestCase):
     def test_checkbox_labels_have_no_colon(self):
         self.assertContains(self.client.get(reverse('template_new')), '>Aktiv</label>', html=False)
         self.assertContains(self.client.get(reverse('settings')), '>Grüße vom Entwickler</label>', html=False)
+
+
+    def test_payment_choices_and_legacy_conversion(self):
+        import importlib
+        from django.apps import apps
+        from django.db import connection
+        from .forms import InvoiceForm
+        form = InvoiceForm()
+        self.assertEqual(list(form.fields['payment_method'].choices), [('transfer', 'Überweisung'), ('cash', 'Barzahlung')])
+        data = self.post_data()
+        data['payment_method'] = 'private'
+        form = InvoiceForm(data)
+        self.assertFalse(form.is_valid())
+        self.assertIn('payment_method', form.errors)
+        invoice = finalize_invoice(self.invoice.pk, 0)
+        pdf = (Path(self.tmp.name) / invoice.pdf_path).read_bytes()
+        Invoice.objects.filter(pk=invoice.pk).update(payment_method='private')
+        migration = importlib.import_module('billing.migrations.0004_remove_private_payment')
+        from types import SimpleNamespace
+        migration.convert_private_payment(apps, SimpleNamespace(connection=connection))
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.payment_method, 'transfer')
+        self.assertEqual((Path(self.tmp.name) / invoice.pdf_path).read_bytes(), pdf)
