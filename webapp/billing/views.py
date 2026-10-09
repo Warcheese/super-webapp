@@ -108,8 +108,12 @@ def invoices(request):
         records = records.filter(Q(cancellation__isnull=False) | Q(cancellation_of__isnull=False))
     query = request.GET.get('q', '').strip()
     if query:
-        records = records.filter(Q(number__icontains=query)|Q(patient__last_name__icontains=query)|
-                                  Q(patient_snapshot__last_name__icontains=query))
+        current_name = Q()
+        saved_name = Q()
+        for part in query.split():
+            current_name &= Q(patient__first_name__icontains=part) | Q(patient__last_name__icontains=part)
+            saved_name &= Q(patient_snapshot__first_name__icontains=part) | Q(patient_snapshot__last_name__icontains=part)
+        records = records.filter(Q(number__icontains=query) | current_name | saved_name)
     return render(request, 'billing/invoices.html', {'invoices': records[:200], 'query': query, 'status': status, 'nav': 'invoices'})
 
 

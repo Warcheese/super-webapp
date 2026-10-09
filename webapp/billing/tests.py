@@ -607,3 +607,27 @@ class BillingTests(TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             self.client.post(url, {'confirm':'yes'})
         self.assertFalse(Invoice.objects.filter(pk=original.pk).exists())
+
+
+    def test_invoice_search_matches_partial_first_last_and_full_patient_names(self):
+        self.patient.last_name = 'Mustermann'
+        self.patient.save()
+        other = Patient.objects.create(first_name='Anna', last_name='Beispiel', street='Testweg 1', city='Erbach')
+        Invoice.objects.create(patient=other)
+        for query in ['max','MAX','mustermann','max mustermann','  max   mustermann  ','mustermann max','max muster']:
+            records=self.client.get(reverse('invoices'), {'q':query}).context['invoices']
+            self.assertEqual([i.pk for i in records], [self.invoice.pk])
+        self.assertEqual(len(self.client.get(reverse('invoices'), {'q':'max beispiel'}).context['invoices']),0)
+
+    def test_invoice_search_matches_frozen_names_numbers_and_respects_status(self):
+        self.patient.last_name='Mustermann'
+        self.patient.save()
+        original=finalize_invoice(self.invoice.pk,0)
+        self.patient.first_name='Anna'
+        self.patient.last_name='Beispiel'
+        self.patient.save()
+        Invoice.objects.create(patient=self.patient)
+        for query in ['max','max mustermann',original.number]:
+            records=self.client.get(reverse('invoices'), {'q':query}).context['invoices']
+            self.assertEqual([i.pk for i in records], [original.pk])
+        self.assertEqual(len(self.client.get(reverse('invoices'), {'q':'max','status':'draft'}).context['invoices']),0)
