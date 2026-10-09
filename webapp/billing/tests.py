@@ -346,3 +346,66 @@ class BillingTests(TestCase):
             self.assertIn(f'Seite {index} von {len(pdf.pages)}',page.extract_text())
             self.assertIn('RECHNUNGSNUMMER',page.extract_text())
             self.assertTrue(list(page.images))
+
+    def test_private_pdf_text_depends_on_invoice_type_not_payment_method(self):
+        from io import BytesIO
+        from pypdf import PdfReader
+        from .pdf import render_pdf
+        from .services import frozen_preview
+        for payment in ['transfer', 'private', 'cash']:
+            self.invoice.invoice_type = 'private'
+            self.invoice.payment_method = payment
+            self.invoice.cash_date = date(2026, 1, 1)
+            text = PdfReader(BytesIO(render_pdf(frozen_preview(self.invoice), preview=True))).pages[0].extract_text()
+            self.assertIn('analogen Leistungsziffern', text)
+            self.assertIn('Heilpraktikerleistungen', text)
+            if payment != 'cash':
+                self.assertIn('innerhalb von 14 Tagen', text)
+        self.invoice.invoice_type = 'self'
+        self.invoice.payment_method = 'private'
+        text = PdfReader(BytesIO(render_pdf(frozen_preview(self.invoice), preview=True))).pages[0].extract_text()
+        self.assertNotIn('analogen Leistungsziffern', text)
+
+    def test_delete_requires_auth_confirmation_and_csrf(self):
+        template = ServiceTemplate.objects.create(description='Massage', price='12')
+        for name, obj in [('patient_delete', self.patient), ('invoice_delete', self.invoice), ('template_delete', template)]:
+            url = reverse(name, args=[obj.pk])
+            self.assertEqual(self.client.get(url).status_code, 200)
+            self.assertTrue(type(obj).objects.filter(pk=obj.pk).exists())
+            self.client.post(url, {})
+            self.assertTrue(type(obj).objects.filter(pk=obj.pk).exists())
+            csrf_client = Client(enforce_csrf_checks=True)
+            csrf_client.force_login(self.user)
+            self.assertEqual(csrf_client.post(url, {'confirm': 'yes'}).status_code, 403)
+            self.client.logout()
+            self.assertEqual(self.client.post(url, {'confirm': 'yes'}).status_code, 302)
+            self.client.force_login(self.user)
+
+    def test_invoice_delete_removes_items_pdfs_but_preserves_number_sequence(self):
+        invoice = finalize_invoice(self.invoice.pk, 0)
+        paths = [Path(self.tmp.name) / invoice.pdf_path, Path(self.tmp.name) / invoice.copy_path]
+        next_number = NumberSequence.objects.get(year=invoice.date.year).next_number
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse('invoice_delete', args=[invoice.pk]), {'confirm': 'yes'})
+        self.assertFalse(Invoice.objects.filter(pk=invoice.pk).exists())
+        self.assertFalse(InvoiceItem.objects.filter(invoice_id=invoice.pk).exists())
+        self.assertTrue(all(not path.exists() for path in paths))
+        self.assertEqual(NumberSequence.objects.get(year=invoice.date.year).next_number, next_number)
+
+    def test_patient_delete_protects_existing_invoices(self):
+        response = self.client.post(reverse('patient_delete', args=[self.patient.pk]), {'confirm': 'yes'}, follow=True)
+        self.assertContains(response, 'hat noch Rechnungen')
+        self.assertTrue(Patient.objects.filter(pk=self.patient.pk).exists())
+        self.invoice.delete()
+        self.client.post(reverse('patient_delete', args=[self.patient.pk]), {'confirm': 'yes'})
+        self.assertFalse(Patient.objects.filter(pk=self.patient.pk).exists())
+
+    def test_template_delete_preserves_invoice_items(self):
+        template = ServiceTemplate.objects.create(description=self.item.description, price=self.item.price)
+        self.client.post(reverse('template_delete', args=[template.pk]), {'confirm': 'yes'})
+        self.assertFalse(ServiceTemplate.objects.filter(pk=template.pk).exists())
+        self.assertTrue(InvoiceItem.objects.filter(pk=self.item.pk).exists())
+
+    def test_checkbox_labels_have_no_colon(self):
+        self.assertContains(self.client.get(reverse('template_new')), '>Aktiv</label>', html=False)
+        self.assertContains(self.client.get(reverse('settings')), '>Grüße vom Entwickler</label>', html=False)

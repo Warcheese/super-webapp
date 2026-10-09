@@ -9,6 +9,7 @@ from django.contrib.auth.views import LoginView
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
+from django.db.models.deletion import ProtectedError
 from django.http import FileResponse, HttpResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -293,3 +294,60 @@ def csv_import(request, kind, pk=None):
         except ValidationError as exc:
             form.add_error(None, ' '.join(exc.messages))
     return render(request, 'billing/import.html', {'form': form, 'kind': kind, 'invoice': obj, 'nav': 'settings'})
+
+
+@login_required
+def patient_delete(request, pk):
+    obj = get_object_or_404(Patient, pk=pk)
+    if request.method == 'POST' and request.POST.get('confirm') == 'yes':
+        try:
+            with transaction.atomic():
+                obj.delete()
+        except ProtectedError:
+            messages.error(request, 'Der Patient hat noch Rechnungen. Bitte diese zuerst löschen; danach kannst du den Patienten löschen.')
+            return redirect('patient_detail', pk=pk)
+        messages.success(request, 'Patient gelöscht.')
+        return redirect('patients')
+    return render(request, 'billing/delete_confirm.html', {'title': 'Patient löschen', 'object_name': str(obj),
+        'warning': 'Patientendaten werden dauerhaft gelöscht. Bestehende Rechnungen müssen zuerst gelöscht werden.',
+        'cancel_url': reverse('patient_detail', args=[pk]), 'nav': 'patients'})
+
+
+@login_required
+def invoice_delete(request, pk):
+    obj = get_object_or_404(Invoice, pk=pk)
+    if request.method == 'POST' and request.POST.get('confirm') == 'yes':
+        with transaction.atomic():
+            root = Path(django_settings.DATA_DIR).resolve()
+            paths = []
+            for relative in [obj.pdf_path, obj.copy_path]:
+                if relative:
+                    path = (root / relative).resolve()
+                    if path.is_relative_to(root / 'pdfs'):
+                        paths.append(path)
+            obj.delete()
+            def remove_pdfs():
+                for path in paths:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        logger.exception('Gelöschte Rechnungsdatei konnte nicht entfernt werden.')
+            transaction.on_commit(remove_pdfs)
+        messages.success(request, 'Rechnung gelöscht. Bereits vergebene Rechnungsnummern werden nicht zurückgesetzt.')
+        return redirect('invoices')
+    return render(request, 'billing/delete_confirm.html', {'title': 'Rechnung löschen',
+        'object_name': f'{obj.number or "Entwurf"} · {obj.recipient}',
+        'warning': 'Bist du dir sicher? Die Rechnung, ihre Leistungen und gespeicherten PDFs werden dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.',
+        'cancel_url': reverse('invoice_detail', args=[pk]), 'nav': 'invoices'})
+
+
+@login_required
+def template_delete(request, pk):
+    obj = get_object_or_404(ServiceTemplate, pk=pk)
+    if request.method == 'POST' and request.POST.get('confirm') == 'yes':
+        obj.delete()
+        messages.success(request, 'Leistungsvorlage gelöscht. Leistungen in bestehenden Rechnungen bleiben erhalten.')
+        return redirect('templates')
+    return render(request, 'billing/delete_confirm.html', {'title': 'Leistungsvorlage löschen', 'object_name': str(obj),
+        'warning': 'Die Vorlage wird dauerhaft gelöscht. Bestehende Rechnungen bleiben unverändert.',
+        'cancel_url': reverse('template_edit', args=[pk]), 'nav': 'templates'})

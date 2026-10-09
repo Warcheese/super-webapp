@@ -125,7 +125,7 @@ cd webapp
 docker build -t super-webapp:local .
 ```
 
-Bei erfolgreichem Build in Unraid **Docker → super-webapp → Edit → Apply** wählen, damit ein Container aus dem neuen Image erstellt wird. Die vorhandene Einbindung `/mnt/user/docker/super-data` nach `/data` und alle Variablen beibehalten. Ein bloßer Neustart verwendet noch das alte Image. Die neue Datenbankmigration ergänzt die Einstellungen automatisch; vorhandene Patienten, Rechnungen und PDFs bleiben erhalten.
+Bei erfolgreichem Build in Unraid **Docker → super-webapp → Edit** wählen, die Beschreibung ändern (z. B. eine Versionsnotiz ergänzen) und **Apply** klicken, damit ein Container aus dem neuen Image erstellt wird. Die vorhandene Einbindung `/mnt/user/docker/super-data` nach `/data` und alle Variablen beibehalten. Ein bloßer Neustart verwendet noch das alte Image. Die neue Datenbankmigration ergänzt die Einstellungen automatisch; vorhandene Patienten, Rechnungen und PDFs bleiben erhalten.
 
 ## Lokal entwickeln und prüfen
 
@@ -151,3 +151,9 @@ python manage.py test
 Nur für eine leere Testinstallation: `python manage.py demo_data`. Legt synthetische Patienten, Vorlagen und einen Entwurf an, aber keinen Benutzer. Keine produktiven Praxisdaten werden automatisch aus dem alten Programm übernommen.
 
 GitHub Actions prüft die WebApp, Migrationen, Tests und Docker-Build bei Änderungen. Der lokale Django-Entwicklungsserver ist nicht der Produktionsserver; im Container läuft Gunicorn.
+
+## Löschen
+
+Patienten, Rechnungen und Leistungsvorlagen lassen sich über „Löschen“ entfernen. Eine Bestätigungsseite verhindert versehentliches Löschen. Beim Löschen einer Rechnung werden auch die Leistungszeilen, das PDF und die Zweitschrift entfernt; die Nummernfolge wird nicht zurückgesetzt. Patienten mit bestehenden Rechnungen sind geschützt: Zuerst die zugehörigen Rechnungen löschen. Das Löschen einer Leistungsvorlage verändert vorhandene Rechnungen nicht.
+
+Bei „Privat / GebüH“ enthält das PDF unabhängig von der Zahlungsart den Hinweis zu analogen Leistungsziffern. Bei Überweisung wird die eingestellte Zahlungsfrist genannt. Bereits ausgestellte PDFs werden nicht nachträglich geändert.

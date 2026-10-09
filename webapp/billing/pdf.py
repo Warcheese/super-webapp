@@ -6,7 +6,7 @@ from xml.sax.saxutils import escape
 import reportlab
 from django.conf import settings
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_RIGHT
+from reportlab.lib.enums import TA_RIGHT, TA_CENTER
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.lib.pagesizes import A4
@@ -65,6 +65,7 @@ def render_pdf(invoice, *, duplicate=False, preview=False):
     body_width = width - 2 * margin
     styles = {
         'body': ParagraphStyle('BodySuper', fontName='SuperSans', fontSize=9.8, leading=12.5),
+        'private_caption': ParagraphStyle('PrivateCaptionSuper', fontName='SuperSans', fontSize=9.3, leading=11.5, alignment=TA_CENTER),
         'small': ParagraphStyle('SmallSuper', fontName='SuperSans', fontSize=6.8, leading=9),
         'header': ParagraphStyle('HeaderSuper', fontName='SuperSans', fontSize=9.4, leading=11.5),
         'meta': ParagraphStyle('MetaSuper', fontName='SuperSans', fontSize=7.8, leading=9.3, alignment=TA_RIGHT),
@@ -123,14 +124,14 @@ def render_pdf(invoice, *, duplicate=False, preview=False):
     salutation = ' '.join(filter(None,[patient['title'],patient['first_name'],patient['last_name']]))
     story += [Spacer(1,2*mm),p(f'Sehr geehrte(r) {salutation},'),Spacer(1,1*mm),
               p('ich erlaube mir, Ihnen die unten aufgeführten Leistungen in Rechnung zu stellen.'),Spacer(1,10*mm)]
-    if invoice.diagnosis:
+    if invoice.diagnosis or invoice.invoice_type == 'private':
         diagnosis = Paragraph('<b>Diagnose(n):</b> '+escape(invoice.diagnosis).replace('\n','<br/>'),styles['body'])
         story += [diagnosis,Spacer(1,3*mm)]
 
     private = invoice.invoice_type == 'private'
     if private:
-        story += [p('Privatpreise gem. §§ 611 und 315 BGB','small'),Spacer(1,2*mm)]
-    headers = ['Datum'] + (['Ziffer'] if private else []) + ['Leistungsbeschreibung','Summe €']
+        story += [p('Privatpreise gem. §§ 611 und 315 BGB','private_caption'),Spacer(1,2*mm)]
+    headers = ['Datum'] + (['Ziffer'] if private else []) + ['Leistungsbeschreibung in Anlehnung der GebüH / Heilpraktikerleistungen' if private else 'Leistungsbeschreibung','Summe €']
     widths = [22*mm] + ([17*mm] if private else []) + [body_width-(65 if private else 48)*mm,26*mm]
     rows = [[p(h,'amount' if n==len(headers)-1 else 'table') for n,h in enumerate(headers)]]
     for item in invoice.items.all():
@@ -155,8 +156,9 @@ def render_pdf(invoice, *, duplicate=False, preview=False):
         payment = f'Rechnungsbetrag in bar dankend am {invoice.cash_date:%d.%m.%Y} erhalten.'
     else:
         payment = f"Bitte überweisen Sie den Rechnungsbetrag innerhalb von {practice['payment_days']} Tagen an das unten angegebene Konto."
-        if invoice.payment_method == 'private':
-            story += [p('Die in meiner Rechnung enthaltenen analogen Leistungsziffern und deren entsprechenden Leistungsbeschreibungen zeigen die teilweise oder vollständige Ähnlichkeit mit durchgeführten und therapeutischen Leistungen des GebüH an. Unabhängig vom Erstattungsverhalten der Beihilfestellen und privaten Krankenversicherungen ist die Rechnung in voller Höhe zu zahlen.'),Spacer(1,4*mm)]
+    if private:
+        deadline = f" innerhalb von {practice['payment_days']} Tagen" if invoice.payment_method != 'cash' else ''
+        story += [p('Die in meiner Rechnung enthaltenen analogen Leistungsziffern und deren entsprechenden Leistungsbeschreibungen zeigen die teilweise oder vollständige Ähnlichkeit mit durchgeführten und therapeutischen Leistungen des GebüH an. Unabhängig vom Erstattungsverhalten der Beihilfestellen und privaten Krankenversicherungen ist die Rechnung in voller Höhe'+deadline+' zu zahlen.'),Spacer(1,4*mm)]
     story += [KeepTogether([p(payment,bold=True),Spacer(1,10*mm),p(f"Mit freundlichen Grüßen\n{practice['name']}")])]
 
     def draw_header(page_canvas, document):

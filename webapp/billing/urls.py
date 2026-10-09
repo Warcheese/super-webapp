@@ -2,6 +2,9 @@ from django.urls import path
 from . import views as v
 
 urlpatterns = [
+    path('patienten/<int:pk>/loeschen/', v.patient_delete, name='patient_delete'),
+    path('rechnungen/<int:pk>/loeschen/', v.invoice_delete, name='invoice_delete'),
+    path('vorlagen/<int:pk>/loeschen/', v.template_delete, name='template_delete'),
     path('', v.dashboard, name='dashboard'),
     path('patienten/', v.patients, name='patients'),
     path('patienten/neu/', v.patient_edit, name='patient_new'),
