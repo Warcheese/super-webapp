@@ -1,0 +1,28 @@
+services:
+  super:
+    build: .
+    image: super-webapp:local
+    container_name: super-webapp
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${SUPER_PORT:-8088}:8000"
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Bitte in .env setzen}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+      SUPER_HTTPS: ${SUPER_HTTPS:-0}
+      SUPER_TRUST_PROXY: ${SUPER_TRUST_PROXY:-0}
+      SUPER_DATA_DIR: /data
+    volumes:
+      - ${SUPER_DATA_PATH:-./data}:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/anmelden/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

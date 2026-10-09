@@ -1,0 +1,129 @@
+# SUPER WebApp
+
+Lokaler Rechnungsmanager mit deutscher Oberfläche, Django, SQLite und direkter PDF-Erzeugung. Läuft als Docker-Container auf Unraid. Das ursprüngliche CLI-Programm bleibt separat im Repository `Warcheese/super`.
+
+## Funktionen
+
+- Anmeldung mit Django-Passwortschutz, CSRF-Schutz und Begrenzung fehlgeschlagener Anmeldeversuche.
+- Patienten suchen, anlegen, ändern und archivieren; stabile Datenbank-IDs.
+- Leistungsvorlagen mit Ziffer und Preis verwalten.
+- Rechnungsentwürfe mit Patientenzuordnung, Diagnose, Leistungsdatum, Anzahl, Preis und Zahlungsart.
+- PDF-Vorschau und endgültige Rechnung; optionale Beihilfe-Zweitschrift.
+- Jahresweise Rechnungsnummern, Dezimalberechnung, eingefrorene Patientendaten und Praxisdaten.
+- Unveränderliche fertige Rechnungen in der WebApp, PDF-Prüfsummen, Zahlungsstatus.
+- Übernahme der bisherigen Patienten-, Vorlagen- und Rechnungs-CSVs.
+- Responsive Oberfläche ohne externe Schriftarten, CDNs oder externe Dienste.
+
+## Unraid: erster Start
+
+Die Einrichtung erfordert einmal das Unraid-Terminal; die tägliche Bedienung erfolgt vollständig im Browser. Alternativ kannst du später das lokal gebaute Image über ein Unraid-Docker-Template verwalten.
+
+1. Dieses Repository lokal oder auf Unraid auschecken. Bei einem privaten Repository GitHub-Anmeldung verwenden; keine Zugangstokens in Skripte oder Compose-Dateien schreiben.
+2. Im Ordner `webapp` die Datei `.env.example` nach `.env` kopieren.
+3. `DJANGO_SECRET_KEY` mit einem zufälligen Wert füllen. Erzeugen z.B. mit:
+
+   ```sh
+   python -c "import secrets; print(secrets.token_urlsafe(64))"
+   ```
+
+4. `SUPER_DATA_PATH` auf einen **direkten lokalen Pool-Pfad** setzen. Wenn dein Pool `appdata` heißt: `/mnt/appdata/super`. Nicht in einen über Nextcloud synchronisierten Ordner legen. Bei anderen Poolnamen den Pfad anpassen.
+5. Den Datenordner anlegen und dem Containerbenutzer UID/GID 1000 Schreibzugriff geben:
+
+   ```sh
+   mkdir -p /mnt/appdata/super
+   chown 1000:1000 /mnt/appdata/super
+   chmod 700 /mnt/appdata/super
+   ```
+
+   Diese Befehle betreffen ausschließlich den neuen SUPER-Ordner. Bestehende Appdata-Verzeichnisse nicht pauschal umberechtigen.
+
+6. `DJANGO_ALLOWED_HOSTS` auf die tatsächlich verwendete IP/Hostnamen setzen. Für Solstice beispielsweise `192.168.178.39,localhost,127.0.0.1`. Hier keine Protokolle oder Ports eintragen.
+7. Mit Docker Compose starten. Falls `docker compose` auf deiner Unraid-Installation nicht verfügbar ist, benötigst du eine Compose-Verwaltung oder musst das Image separat bauen und als Docker-Container konfigurieren.
+
+   ```sh
+   docker compose up -d --build
+   docker compose exec super python manage.py createsuperuser
+   ```
+
+8. `http://192.168.178.39:8088` öffnen und mit dem gerade angelegten Benutzer anmelden.
+9. Unter **Einstellungen** Praxisadresse, Bankverbindung und nächste freie Rechnungsnummer eintragen. Für den geprüften alten Stand war diese Nummer 160; vor dem Umstieg den aktuellen Wert verwenden.
+10. Patienten und Leistungsvorlagen über **Einstellungen → Bisherige Daten übernehmen** importieren oder neu anlegen.
+
+### Unraid Docker-Maske ohne laufende Compose-Verwaltung
+
+Das Image zuerst bauen: `docker build -t super-webapp:local .` im Ordner `webapp`.
+
+| Einstellung | Wert |
+|---|---|
+| Repository / Image | `super-webapp:local` |
+| Netzwerk | `bridge` |
+| WebUI | `http://[IP]:[PORT:8000]` |
+| Container-Port | `8000` |
+| Host-Port | `8088` (oder ein freier Port) |
+| Container-Pfad | `/data` |
+| Host-Pfad | `/mnt/appdata/super` bzw. dein direkter Pool-Pfad |
+| Variable | `SUPER_DATA_DIR=/data` |
+| Variable | `DJANGO_SECRET_KEY=<zufälliger geheimer Wert>` |
+| Variable | `DJANGO_ALLOWED_HOSTS=192.168.178.39,localhost,127.0.0.1` |
+
+Anmeldung einmalig über die Container-Konsole einrichten: `python manage.py createsuperuser`. Keine Standardpasswörter werden mitgeliefert.
+
+## Zugriff
+
+Ausgelegt für Heimnetz/VPN und einen kleinen gemeinsamen Praxisbestand. Alle angemeldeten Benutzer haben Zugriff auf dieselben Patienten und Rechnungen; keine getrennten Mandanten oder Rollen. HTTP nur im vertrauenswürdigen Heimnetz bzw. über WireGuard verwenden. Keine direkte Portfreigabe ins Internet.
+
+Für einen eigenen HTTPS-Reverse-Proxy `SUPER_HTTPS=1`, gegebenenfalls `SUPER_TRUST_PROXY=1` und `DJANGO_CSRF_TRUSTED_ORIGINS=https://dein-hostname` setzen. Der Proxy muss `X-Forwarded-Proto` selbst setzen und eingehende Fremdwerte entfernen. Die Compose-Healthcheck-URL muss bei HTTPS-Weiterleitung entsprechend an deinen Proxy angepasst werden.
+
+## Bisherige Daten übernehmen
+
+CSV-Dateien: UTF-8 (BOM erlaubt), Semikolon als Trennzeichen.
+
+- **Patienten**: `ID;Anrede;Vorname;Nachname;Straße;Ort;Geburtsdatum;Telefon`. Wiederholter Import aktualisiert anhand der bisherigen ID; bestehende fertige Rechnungen bleiben gleich. Ungültige Geburtstage wie `14.14.1414` müssen vor dem Import korrigiert oder geleert werden. Der Import ist pro Datei vollständig oder gar nicht.
+- **Vorlagen**: `Ziffer;Leistungsbeschreibung;Summe`, zusätzliche Spalten erlaubt. Wiederholter Import aktualisiert Preis anhand von Ziffer und Beschreibung.
+- **Rechnungsleistungen**: im gewünschten Patientenentwurf über „Rechnungs-CSV übernehmen“. `Datum;Ziffer;Leistungsbeschreibung;Summe`, optional `Diagnose`. Die Positionen werden angehängt; dieselbe Datei nicht doppelt importieren. Die Diagnose gehört zur Rechnung, nicht zur ersten Position.
+- Alte fertige PDFs werden nicht automatisch in die Datenbank importiert. Behalte dein bisheriges Rechnungsarchiv; importiere alte fertige Rechnungen nicht als neue Rechnung. Die WebApp erzeugt Rechnungen erst ab dem Umstieg.
+
+## Rechnungen und Nummern
+
+Eine Nummer wird erst beim endgültigen Erstellen vergeben. Erstellung und Nummernvergabe erfolgen in einer SQLite-`IMMEDIATE`-Transaktion. Wiederholte Klicks erzeugen keine zweite Rechnung. Ein zweites Browserfenster mit einer alten Entwurfsrevision kann eine neuere Änderung nicht überschreiben.
+
+Beim Erstellen ist das Rechnungsdatum der aktuelle Tag. Die PDF-Dateien erhalten eindeutige Namen und werden exklusiv angelegt. Bei normalen Schreib-/PDF-Fehlern wird die Transaktion zurückgerollt und neu erzeugte Dateien werden entfernt. Ein harter Prozessabbruch kann unreferenzierte PDF-Dateien hinterlassen; sie werden nicht als Rechnung angezeigt. Der Betrieb setzt eine einzelne App-Instanz auf derselben lokalen SQLite-Datenbank voraus.
+
+Der PDF-Aufbau ist neu implementiert und entspricht nicht pixelgenau der bisherigen LaTeX-Vorlage. Praxisangaben und Steuerhinweis sind konfigurierbar. Vor Nutzung die ersten PDFs fachlich und optisch prüfen. Die Anwendung bietet noch keinen Storno-/Korrekturrechnungsablauf, keine Mahnungen, keine E-Rechnung und keine automatische rechtliche Prüfung. Fertige Rechnungen lassen sich daher in dieser Version bewusst nicht bearbeiten oder löschen. PDF-Prüfsummen ersetzen kein revisionssicheres Archiv.
+
+## Datensicherung & Wiederherstellung
+
+**Datenbank und PDFs immer gemeinsam sichern.** Alles liegt unter `SUPER_DATA_PATH`: `super.sqlite3` und `pdfs/`. Am einfachsten den Container stoppen, den gesamten Datenordner sichern und danach starten:
+
+```sh
+docker compose stop super
+# Jetzt den gesamten Datenordner mit deinem Unraid-Backup sichern.
+docker compose start super
+```
+
+Zusätzlich `.env` getrennt und geschützt sichern. Bei Wiederherstellung den Container stoppen, Datenordner vollständig wiederherstellen, Besitzer/Berechtigungen prüfen und starten. Code bzw. Docker-Image allein enthalten keine Patientendaten. Für Updates ebenfalls zuerst sichern, dann `docker compose up -d --build`. Datenbankmigrationen laufen beim Start automatisch.
+
+## Lokal entwickeln und prüfen
+
+Python 3.12. In einem eigenen virtuellen Environment:
+
+```sh
+python -m venv .venv
+# Linux: source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+Umgebungsvariable `DJANGO_SECRET_KEY` setzen; für lokalen Entwicklungsserver zusätzlich `DJANGO_DEBUG=1`. Unter Linux z.B. `export DJANGO_SECRET_KEY='nur-fuer-lokale-entwicklung'`; unter PowerShell `$env:DJANGO_SECRET_KEY='nur-fuer-lokale-entwicklung'`.
+
+```sh
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver
+python manage.py check
+python manage.py test
+```
+
+Nur für eine leere Testinstallation: `python manage.py demo_data`. Legt synthetische Patienten, Vorlagen und einen Entwurf an, aber keinen Benutzer. Keine produktiven Praxisdaten werden automatisch aus dem alten Programm übernommen.
+
+GitHub Actions prüft die WebApp, Migrationen, Tests und Docker-Build bei Änderungen. Der lokale Django-Entwicklungsserver ist nicht der Produktionsserver; im Container läuft Gunicorn.
