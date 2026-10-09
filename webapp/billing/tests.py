@@ -432,3 +432,18 @@ class BillingTests(TestCase):
         invoice.refresh_from_db()
         self.assertEqual(invoice.payment_method, 'transfer')
         self.assertEqual((Path(self.tmp.name) / invoice.pdf_path).read_bytes(), pdf)
+
+
+    def test_all_59_default_greetings_can_appear_on_dashboard(self):
+        from .greetings import MESSAGES
+        self.assertEqual(len(MESSAGES), 59)
+        self.assertEqual(len(set(MESSAGES)), 59)
+        self.practice.developer_greetings = True
+        self.practice.greeting_messages = ''
+        self.practice.save()
+        for index, message in enumerate(MESSAGES):
+            with patch('billing.greetings.choice', side_effect=lambda options, index=index: options[index]):
+                response = self.client.get(reverse('dashboard'))
+            self.assertEqual(response.context['greeting'], message)
+            from django.utils.html import escape
+            self.assertContains(response, escape(message))
