@@ -268,7 +268,7 @@ class ClinicalTests(TestCase):
         response = self.client.get(reverse('documentation'))
         self.assertNotIn(self.other, list(response.context['active_patients']))
         self.assertIn(self.other, list(response.context['patients']))
-        self.assertContains(response, 'Nur aktive Patienten')
+        self.assertContains(response, 'Aktiven Patienten auswählen')
         count = TreatmentNote.objects.count()
         self.client.post(reverse('documentation_new'), {'patient': self.other.pk})
         self.assertEqual(TreatmentNote.objects.count(), count)
