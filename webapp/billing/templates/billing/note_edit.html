@@ -1,0 +1,8 @@
+{% extends 'billing/base.html' %}{% block content %}
+<a class="back" href="{% url 'clinical_record' patient.pk %}">← Dokumentation · {{ patient }}</a>
+<section class="page-heading"><div><div class="eyebrow">BEHANDLUNG · ENTWURF</div><h1>Behandlung dokumentieren</h1><p>{{ patient }}</p></div><a class="button secondary" href="{% url 'note_export' patient.pk note.pk %}">Entwurf als Word</a></section>
+<form method="post" class="panel" id="clinical-note-form" data-autosave-url="{% url 'note_edit' patient.pk note.pk %}">{% csrf_token %}<input type="hidden" name="revision" value="{{ note.revision }}"><input type="hidden" name="action" value="save">{% include 'billing/form_fields.html' %}
+<p id="clinical-save-status" role="status" aria-live="polite">Entwürfe werden beim Schreiben automatisch gespeichert. Zuletzt gespeichert: {{ note.updated_at|date:'d.m.Y H:i:s' }}.</p>
+<div class="actions"><button class="button secondary" type="submit" data-action="save">Entwurf speichern</button></div>
+<hr><p>Nach dem Abschließen bleibt dieser Eintrag unverändert. Ergänzungen sind anschließend als datierte Nachträge möglich.</p><label class="clinical-confirm"><input type="checkbox" name="confirm" value="yes"> Ich möchte diesen Eintrag endgültig abschließen.</label><p><button class="button" type="submit" data-action="finalize">Dokumentation abschließen</button></p></form>
+{% endblock %}

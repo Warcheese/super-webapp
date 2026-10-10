@@ -95,3 +95,64 @@
     });
   }
 })();
+
+(() => {
+  const form = document.querySelector('#clinical-note-form');
+  if (!form) return;
+  const status = document.querySelector('#clinical-save-status');
+  const revision = form.elements.revision;
+  const signature = () => JSON.stringify([form.elements.date.value, form.elements.body.value]);
+  let saved = signature(), pending = null, timer = null, conflict = false, submitting = false;
+  async function save() {
+    if (pending) return pending;
+    if (conflict || submitting || signature() === saved) return;
+    const captured = signature();
+    const payload = new FormData(form);
+    payload.set('action', 'save');
+    status.textContent = 'Wird gespeichert …';
+    pending = (async () => {
+      try {
+        const response = await fetch(form.dataset.autosaveUrl, {
+          method: 'POST', body: payload, credentials: 'same-origin', headers: {'Accept': 'application/json'}
+        });
+        if (!response.headers.get('Content-Type')?.includes('application/json')) throw new Error('Speichern fehlgeschlagen. Bitte Verbindung prüfen oder neu anmelden.');
+        const data = await response.json();
+        if (!response.ok) {
+          if (response.status === 409) conflict = true;
+          throw new Error(data.error || 'Speichern fehlgeschlagen.');
+        }
+        revision.value = data.revision;
+        saved = captured;
+        status.textContent = `Gespeichert um ${data.saved_at}.`;
+        if (signature() !== saved && !submitting) timer = setTimeout(save, 500);
+      } catch (error) {
+        status.textContent = `${error.message} Deine aktuelle Eingabe steht weiterhin im Textfeld.`;
+      } finally { pending = null; }
+    })();
+    return pending;
+  }
+  for (const field of [form.elements.date, form.elements.body]) {
+    field.addEventListener('input', () => {
+      clearTimeout(timer);
+      if (!conflict) { status.textContent = 'Noch nicht gespeichert …'; timer = setTimeout(save, 1000); }
+    });
+  }
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (submitting || conflict) return;
+    const action = event.submitter?.dataset.action || 'save';
+    if (action === 'finalize' && !form.elements.confirm.checked) {
+      status.textContent = 'Bitte das endgültige Abschließen mit der Checkbox bestätigen.';
+      return;
+    }
+    submitting = true;
+    clearTimeout(timer);
+    await pending;
+    if (conflict) { submitting = false; return; }
+    form.elements.action.value = action;
+    HTMLFormElement.prototype.submit.call(form);
+  });
+  window.addEventListener('beforeunload', event => {
+    if (!submitting && (pending || signature() !== saved)) { event.preventDefault(); event.returnValue = ''; }
+  });
+})();

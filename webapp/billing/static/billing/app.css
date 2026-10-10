@@ -24,3 +24,5 @@ body[data-theme="dark"] .brand{color:var(--ink)}
 @media(max-width:740px){.topbar{height:auto;min-height:65px;padding:12px 0;align-items:flex-start}.super-name{max-width:100%;flex:1}.date{white-space:nowrap}}
 
 .status-error{display:block;color:#a84636;font-size:11px;max-width:230px}.status-error:empty{display:none}.status-toggle:disabled{opacity:.6;cursor:wait}
+
+.clinical-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}.clinical-entry{padding:1rem 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.clinical-confirm{display:flex;align-items:center;gap:.7rem}.clinical-confirm input{width:auto}#clinical-note-form textarea{min-height:20rem}#clinical-save-status{font-size:.9rem}.clinical-entry h3{margin:0}

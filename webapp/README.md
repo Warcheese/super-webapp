@@ -179,3 +179,13 @@ In den Patienten- und Leistungslisten schaltet ein Klick auf „Aktiv“ bzw. �
 Die Übersicht zeigt die Einnahmen des aktuellen Jahres als Summe bezahlter, nicht stornierter Rechnungen nach dem Zahlungsdatum. Das Jahr wechselt automatisch. Die Liste offener Rechnungen zeigt die sechs ältesten offenen Rechnungen und verlinkt alle offenen Rechnungen.
 
 Die Patientenliste zeigt Nachname, Vorname. Mit JavaScript ändern die Status-Schalter den Eintrag direkt, ohne Seitenwechsel oder Erfolgsmeldung; Scrollposition und Zeilenposition bleiben erhalten. Ohne JavaScript bleibt das normale Formular verfügbar.
+
+## Behandlungsdokumentation
+
+Beim Patienten öffnet „Dokumentation“ die Akte. Jede Behandlung hat einen datierten Freitext-Eintrag. Entwürfe werden mit JavaScript nach einer kurzen Schreibpause automatisch auf dem Server gespeichert; ohne JavaScript bleibt „Entwurf speichern“ verfügbar. Ein Speicherstatus zeigt Erfolg oder Fehler. Bei gleichzeitiger Bearbeitung wird eine veraltete Eingabe abgewiesen, statt den neueren Stand zu überschreiben. Nicht gespeicherte Eingaben bleiben im Textfeld; vor dem Verlassen erscheint eine Browserwarnung.
+
+„Dokumentation abschließen“ erfordert die ausdrückliche Bestätigung. Danach sind Text und Datum über die App unveränderbar. Ergänzungen erfolgen als ebenfalls unveränderbare Nachträge mit Autor und Zeitpunkt. Es gibt keine Löschfunktion für Dokumentation; Patienten mit Einträgen oder Anhängen können archiviert, aber nicht gelöscht werden. Alle angemeldeten Praxisbenutzer haben Zugriff auf die Akten. Das ist keine gegen Datenbankadministratoren manipulationsgeschützte Archivierung.
+
+Bestehende DOCX-Dateien bis 10 MB lassen sich unverändert an die Patientenakte anhängen. Es erfolgt keine automatische Übernahme ihres Inhalts in Behandlungseinträge. Originale sind nur nach Anmeldung abrufbar; beim Download wird die Prüfsumme kontrolliert. Einzelne Einträge oder die gesamte Akte können als Word-Datei exportiert werden; Entwürfe sind gekennzeichnet, Anhänge werden nur aufgelistet und separat heruntergeladen. Die Suche findet Text aus Einträgen und Nachträgen sowie Dateinamen der Anhänge.
+
+Texte werden in der vorhandenen SQLite-Datenbank gespeichert, Originaldokumente im Unterordner `documents` von `SUPER_DATA_DIR`. Beim aktuellen Unraid-Aufbau liegt alles unter `/mnt/user/super/super-data`, im Container unter `/data`. Die Sicherung muss weiterhin den gesamten Datenordner umfassen. Beim Update werden die neuen Tabellen automatisch angelegt; der bestehende Daten-Mount bleibt erhalten.

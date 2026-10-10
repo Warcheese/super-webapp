@@ -1,7 +1,17 @@
 from django.urls import path
 from . import views as v
+from . import clinical_views as c
 
 urlpatterns = [
+    path('patienten/<int:patient_pk>/dokumentation/', c.clinical_record, name='clinical_record'),
+    path('patienten/<int:patient_pk>/dokumentation/neu/', c.note_new, name='note_new'),
+    path('patienten/<int:patient_pk>/dokumentation/export/', c.documentation_export, name='documentation_export'),
+    path('patienten/<int:patient_pk>/dokumentation/anhang/', c.attachment_upload, name='attachment_upload'),
+    path('patienten/<int:patient_pk>/dokumentation/anhang/<int:pk>/', c.attachment_download, name='attachment_download'),
+    path('patienten/<int:patient_pk>/dokumentation/<int:pk>/', c.note_detail, name='note_detail'),
+    path('patienten/<int:patient_pk>/dokumentation/<int:pk>/bearbeiten/', c.note_edit, name='note_edit'),
+    path('patienten/<int:patient_pk>/dokumentation/<int:pk>/nachtrag/', c.note_addendum, name='note_addendum'),
+    path('patienten/<int:patient_pk>/dokumentation/<int:pk>/export/', c.documentation_export, name='note_export'),
     path('patienten/<int:pk>/status/', v.patient_toggle, name='patient_toggle'),
     path('vorlagen/<int:pk>/status/', v.template_toggle, name='template_toggle'),
     path('rechnungen/<int:pk>/stornieren/', v.invoice_cancel, name='invoice_cancel'),

@@ -25,4 +25,8 @@ jobs:
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tests/clinical-autosave.cjs
       - run: docker build -t super-webapp:test .

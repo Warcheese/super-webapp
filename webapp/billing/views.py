@@ -102,7 +102,8 @@ def patient_edit(request, pk=None):
 def patient_detail(request, pk):
     patient = get_object_or_404(Patient, pk=pk)
     return render(request, 'billing/patient_detail.html', {'patient': patient,
-        'invoices': patient.invoices.prefetch_related('items'), 'nav': 'patients'})
+        'invoices': patient.invoices.prefetch_related('items'), 'notes_count': patient.treatment_notes.count(),
+        'attachments_count': patient.clinical_attachments.count(), 'nav': 'patients'})
 
 
 @login_required
@@ -330,12 +331,12 @@ def patient_delete(request, pk):
             with transaction.atomic():
                 obj.delete()
         except ProtectedError:
-            messages.error(request, 'Der Patient hat noch Rechnungen. Bitte diese zuerst löschen; danach kannst du den Patienten löschen.')
+            messages.error(request, 'Der Patient hat noch Rechnungen oder Dokumentation. Rechnungen können zuerst gelöscht werden; Patienten mit Dokumentation bitte archivieren.')
             return redirect('patient_detail', pk=pk)
         messages.success(request, 'Patient gelöscht.')
         return redirect('patients')
     return render(request, 'billing/delete_confirm.html', {'title': 'Patient löschen', 'object_name': str(obj),
-        'warning': 'Patientendaten werden dauerhaft gelöscht. Bestehende Rechnungen müssen zuerst gelöscht werden.',
+        'warning': 'Patientendaten werden dauerhaft gelöscht. Bestehende Rechnungen müssen zuerst gelöscht werden. Patienten mit Dokumentation oder Anhängen sind vor dem Löschen geschützt; bitte archivieren.',
         'cancel_url': reverse('patient_detail', args=[pk]), 'nav': 'patients'})
 
 

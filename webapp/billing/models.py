@@ -1,4 +1,6 @@
 from decimal import Decimal, ROUND_HALF_UP
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
@@ -139,3 +141,57 @@ class LoginAttempt(models.Model):
     key = models.CharField(max_length=64, unique=True)
     failures = models.PositiveIntegerField(default=0)
     updated_at = models.DateTimeField(default=timezone.now)
+
+
+def clinical_attachment_path(instance, filename):
+    return f'documents/{uuid4().hex}.docx'
+
+
+class TreatmentNote(models.Model):
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name='treatment_notes')
+    date = models.DateField('Behandlungsdatum', default=timezone.localdate)
+    body = models.TextField('Dokumentation', blank=True, max_length=30000)
+    revision = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+    updated_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    edited_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    finalized_at = models.DateTimeField(null=True, blank=True)
+    author_name = models.CharField(max_length=150, blank=True)
+    patient_snapshot = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at', '-pk']
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk, finalized_at__isnull=False).exists():
+            raise ValidationError('Abgeschlossene Dokumentation bleibt unverändert. Bitte einen Nachtrag anlegen.')
+        super().save(*args, **kwargs)
+
+
+class TreatmentAddendum(models.Model):
+    note = models.ForeignKey(TreatmentNote, on_delete=models.PROTECT, related_name='addenda')
+    body = models.TextField('Nachtrag', max_length=10000)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    author_name = models.CharField(max_length=150)
+
+    class Meta:
+        ordering = ['created_at', 'pk']
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError('Gespeicherte Nachträge bleiben unverändert.')
+        super().save(*args, **kwargs)
+
+
+class ClinicalAttachment(models.Model):
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name='clinical_attachments')
+    file = models.FileField(upload_to=clinical_attachment_path)
+    original_name = models.CharField(max_length=200)
+    sha256 = models.CharField(max_length=64)
+    uploaded_at = models.DateTimeField(default=timezone.now, editable=False)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        ordering = ['-uploaded_at', '-pk']

@@ -2,3 +2,4 @@ Django==5.2.18
 gunicorn==23.0.0
 whitenoise==6.12.0
 reportlab==4.4.9
+python-docx==1.2.0
