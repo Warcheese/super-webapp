@@ -141,16 +141,30 @@
     event.preventDefault();
     if (submitting || conflict) return;
     const action = event.submitter?.dataset.action || 'save';
-    if (action === 'finalize' && !form.elements.confirm.checked) {
-      status.textContent = 'Bitte das endgültige Abschließen mit der Checkbox bestätigen.';
-      return;
-    }
     submitting = true;
     clearTimeout(timer);
     await pending;
     if (conflict) { submitting = false; return; }
     form.elements.action.value = action;
     HTMLFormElement.prototype.submit.call(form);
+  });
+  const attachmentForm = document.querySelector('[data-note-attachment-form]');
+  let uploading = false;
+  attachmentForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (uploading || submitting || conflict) return;
+    uploading = true;
+    clearTimeout(timer);
+    await pending;
+    while (!conflict && signature() !== saved) {
+      const previous = saved;
+      await save();
+      if (saved === previous) break;
+    }
+    if (conflict || signature() !== saved) { uploading = false; return; }
+    submitting = true;
+    clearTimeout(timer);
+    HTMLFormElement.prototype.submit.call(attachmentForm);
   });
   window.addEventListener('beforeunload', event => {
     if (!submitting && (pending || signature() !== saved)) { event.preventDefault(); event.returnValue = ''; }

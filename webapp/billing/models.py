@@ -174,7 +174,7 @@ class TreatmentNote(models.Model):
 
 
 class TreatmentAddendum(models.Model):
-    note = models.ForeignKey(TreatmentNote, on_delete=models.PROTECT, related_name='addenda')
+    note = models.ForeignKey(TreatmentNote, on_delete=models.CASCADE, related_name='addenda')
     body = models.TextField('Nachtrag', max_length=10000)
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
@@ -190,6 +190,7 @@ class TreatmentAddendum(models.Model):
 
 
 class ClinicalAttachment(models.Model):
+    note = models.ForeignKey(TreatmentNote, null=True, blank=True, on_delete=models.CASCADE, related_name='attachments')
     patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name='clinical_attachments')
     file = models.FileField(upload_to=clinical_attachment_path)
     original_name = models.CharField(max_length=200)

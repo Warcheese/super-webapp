@@ -31,7 +31,7 @@ class ClinicalTests(TestCase):
         return result
 
     def finalize(self):
-        response = self.client.post(self.edit, self.data(action='finalize', confirm='yes'))
+        response = self.client.post(self.edit, self.data(action='finalize'))
         self.assertEqual(response.status_code, 302)
         self.note.refresh_from_db()
 
@@ -40,7 +40,7 @@ class ClinicalTests(TestCase):
         return b'Original attachment bytes'
 
     def upload(self, data=None, name='Altakte.docx'):
-        return self.client.post(reverse('attachment_upload', args=[self.patient.pk]), {'file': SimpleUploadedFile(name, self.docx() if data is None else data)})
+        return self.client.post(reverse('attachment_upload', args=[self.patient.pk, self.note.pk]), {'file': SimpleUploadedFile(name, self.docx() if data is None else data)})
 
     def test_pages_render_and_authentication(self):
         urls = [reverse('clinical_record', args=[self.patient.pk]), self.edit, reverse('documentation_export', args=[self.patient.pk])]
@@ -71,11 +71,13 @@ class ClinicalTests(TestCase):
         self.note.refresh_from_db()
         self.assertEqual(self.note.revision, 0)
 
-    def test_finalize_requires_text_and_confirmation(self):
-        for changes in [dict(action='finalize'), dict(action='finalize', body='', confirm='yes')]:
-            self.client.post(self.edit, self.data(**changes))
-            self.note.refresh_from_db()
-            self.assertIsNone(self.note.finalized_at)
+    def test_finalize_requires_text_but_no_checkbox(self):
+        self.client.post(self.edit, self.data(action='finalize', body=''))
+        self.note.refresh_from_db()
+        self.assertIsNone(self.note.finalized_at)
+        self.assertEqual(self.client.post(self.edit, self.data(action='finalize')).status_code, 302)
+        self.note.refresh_from_db()
+        self.assertIsNotNone(self.note.finalized_at)
 
     def test_finalized_note_is_immutable_and_snapshots_identity(self):
         self.finalize()
@@ -88,13 +90,13 @@ class ClinicalTests(TestCase):
             self.note.save()
         self.assertContains(self.client.get(reverse('note_detail', args=[self.patient.pk, self.note.pk])), 'Schulter')
 
-    def test_addendum_confirmed_and_original_preserved(self):
+    def test_addendum_saved_without_checkbox_and_original_preserved(self):
         url = reverse('note_addendum', args=[self.patient.pk, self.note.pk])
         self.assertEqual(self.client.post(url, {'body': 'Nachtrag', 'confirm': 'on'}).status_code, 404)
         self.finalize()
         original = self.note.body
-        self.assertEqual(self.client.post(url, {'body': 'Nachtrag'}).status_code, 400)
-        self.assertEqual(self.client.post(url, {'body': 'Zusatzbefund', 'confirm': 'on'}).status_code, 302)
+        self.assertEqual(self.client.post(url, {'body': ''}).status_code, 400)
+        self.assertEqual(self.client.post(url, {'body': 'Zusatzbefund'}).status_code, 302)
         addition = self.note.addenda.get()
         self.assertEqual(addition.author_name, 'steffi')
         with self.assertRaises(ValidationError):
@@ -198,9 +200,12 @@ class ClinicalTests(TestCase):
         url = reverse('clinical_record', args=[self.patient.pk])
         response = self.client.get(url, {'q': 'Altakte'})
         self.assertContains(response, 'Altakte.docx')
-        self.assertNotContains(response, 'Kopfschmerz')
+        self.assertContains(response, 'Kopfschmerz')
         response = self.client.get(url, {'q': 'Kopf'})
         self.assertContains(response, 'Kopfschmerz')
+        self.assertContains(response, 'Altakte.docx')
+        response = self.client.get(url, {'q': 'Unbekannter Befund'})
+        self.assertNotContains(response, 'Kopfschmerz')
         self.assertNotContains(response, 'Altakte.docx')
 
     def test_documentation_menu_and_global_filters(self):
@@ -256,3 +261,88 @@ class ClinicalTests(TestCase):
         self.assertIn('Befund <b> & Wärme', text)
         self.assertIn('ENDE DER DOKUMENTATION', text)
         self.assertIn(f'Seite {len(reader.pages)} von {len(reader.pages)}', reader.pages[-1].extract_text())
+
+    def test_new_documentation_allows_only_active_patients(self):
+        self.other.active = False
+        self.other.save()
+        response = self.client.get(reverse('documentation'))
+        self.assertNotIn(self.other, list(response.context['active_patients']))
+        self.assertIn(self.other, list(response.context['patients']))
+        self.assertContains(response, 'Nur aktive Patienten')
+        count = TreatmentNote.objects.count()
+        self.client.post(reverse('documentation_new'), {'patient': self.other.pk})
+        self.assertEqual(TreatmentNote.objects.count(), count)
+        self.assertEqual(self.client.post(reverse('note_new', args=[self.other.pk])).status_code, 404)
+
+    def test_navigation_and_checkbox_removal(self):
+        response = self.client.get(reverse('documentation'))
+        self.assertContains(response, 'href="'+self.edit+'"')
+        self.assertNotContains(response, 'href="'+reverse('clinical_record', args=[self.patient.pk])+'"')
+        self.assertNotContains(response, 'Weiter schreiben')
+        response = self.client.get(reverse('clinical_record', args=[self.patient.pk]))
+        self.assertContains(response, 'Patientenakte:')
+        self.assertContains(response, 'Zurück zu')
+        self.assertNotContains(response, 'Patient öffnen')
+        self.assertNotContains(response, 'Datei anhängen')
+        response = self.client.get(self.edit)
+        self.assertNotContains(response, 'name="confirm"')
+        self.assertContains(response, 'Export als PDF')
+        self.assertContains(response, 'Entwurf speichern')
+        self.finalize()
+        response = self.client.get(reverse('note_detail', args=[self.patient.pk, self.note.pk]))
+        self.assertNotContains(response, 'name="confirm"')
+        self.assertContains(response, 'Export als PDF')
+
+    def test_delete_draft_and_final_note_with_files_and_addenda(self):
+        self.upload()
+        file = Path(ClinicalAttachment.objects.get().file.path)
+        url = reverse('note_delete', args=[self.patient.pk, self.note.pk])
+        self.assertContains(self.client.get(url), 'endgültig gelöscht')
+        self.client.post(url)
+        self.assertTrue(TreatmentNote.objects.filter(pk=self.note.pk).exists())
+        self.finalize()
+        TreatmentAddendum.objects.create(note=self.note, body='Zusatz', author_name='steffi')
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.client.post(url, {'confirm': 'yes'}).status_code, 302)
+        self.assertFalse(TreatmentNote.objects.filter(pk=self.note.pk).exists())
+        self.assertFalse(TreatmentAddendum.objects.exists())
+        self.assertFalse(ClinicalAttachment.objects.exists())
+        self.assertFalse(file.exists())
+        draft = TreatmentNote.objects.create(patient=self.patient)
+        self.client.post(reverse('note_delete', args=[self.patient.pk, draft.pk]), {'confirm': 'yes'})
+        self.assertFalse(TreatmentNote.objects.filter(pk=draft.pk).exists())
+        self.assertTrue(Patient.objects.filter(pk=self.patient.pk).exists())
+
+    def test_deletion_and_upload_patient_boundaries_and_csrf(self):
+        for name in ['note_delete', 'attachment_upload']:
+            url = reverse(name, args=[self.other.pk, self.note.pk])
+            self.assertEqual(self.client.post(url, {'confirm': 'yes'}).status_code, 404)
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.user)
+        self.assertEqual(client.post(reverse('note_delete', args=[self.patient.pk, self.note.pk]), {'confirm': 'yes'}).status_code, 403)
+
+    def test_attachments_belong_to_one_treatment_and_legacy_assignment(self):
+        self.upload()
+        attachment = ClinicalAttachment.objects.get()
+        self.assertEqual(attachment.note, self.note)
+        second = TreatmentNote.objects.create(patient=self.patient)
+        response = self.client.get(reverse('note_edit', args=[self.patient.pk, second.pk]))
+        self.assertNotContains(response, 'Altakte.docx')
+        response = self.client.get(self.edit)
+        self.assertContains(response, 'Altakte.docx')
+        pdf = self.client.get(reverse('note_export', args=[self.patient.pk, self.note.pk]))
+        self.assertIn('Altakte.docx', '\n'.join(page.extract_text() for page in PdfReader(BytesIO(b''.join(pdf.streaming_content))).pages))
+        ClinicalAttachment.objects.filter(pk=attachment.pk).update(note=None)
+        self.assertContains(self.client.get(reverse('clinical_record', args=[self.patient.pk])), 'Bisherige Anhänge')
+        url = reverse('attachment_assign', args=[self.patient.pk, attachment.pk])
+        foreign_note = TreatmentNote.objects.create(patient=self.other)
+        self.assertEqual(self.client.post(url, {'note': foreign_note.pk}).status_code, 404)
+        self.assertEqual(self.client.post(url, {'note': second.pk}).status_code, 302)
+        attachment.refresh_from_db()
+        self.assertEqual(attachment.note, second)
+        self.assertEqual(self.client.post(url, {'note': self.note.pk}).status_code, 404)
+
+    def test_finalize_without_javascript_uses_clicked_button(self):
+        self.assertEqual(self.client.post(self.edit, self.data(action='save', submit_action='finalize')).status_code, 302)
+        self.note.refresh_from_db()
+        self.assertIsNotNone(self.note.finalized_at)

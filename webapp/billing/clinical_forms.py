@@ -24,7 +24,6 @@ class AddendumForm(forms.ModelForm):
     def clean_body(self):
         return validate_text(self.cleaned_data["body"])
 
-    confirm = forms.BooleanField(label='Nachtrag endgültig speichern')
     class Meta:
         model = TreatmentAddendum
         fields = ['body']

@@ -1,7 +1,8 @@
 {% extends 'billing/base.html' %}{% block content %}
-<a class="back" href="{% url 'clinical_record' patient.pk %}">← Dokumentation · {{ patient }}</a>
-<section class="page-heading"><div><div class="eyebrow">BEHANDLUNG · ABGESCHLOSSEN</div><h1>{{ note.date|date:'d.m.Y' }}</h1><p>{{ patient }}</p></div><a class="button secondary" href="{% url 'note_export' patient.pk note.pk %}">Eintrag als PDF</a></section>
+<a class="back" href="{% url 'clinical_record' patient.pk %}">← Patientenakte · {{ patient }}</a>
+<section class="page-heading"><div><div class="eyebrow">BEHANDLUNG · ABGESCHLOSSEN</div><h1>{{ note.date|date:'d.m.Y' }}</h1><p>{{ patient }}</p></div><div class="actions"><a class="button secondary" href="{% url 'note_delete' patient.pk note.pk %}">Löschen</a><a class="button secondary" href="{% url 'note_export' patient.pk note.pk %}">Export als PDF</a></div></section>
 <section class="panel clinical-panel"><p><small>Abgeschlossen am {{ note.finalized_at|date:'d.m.Y H:i:s' }} von {{ note.author_name }}</small></p><div class="clinical-text">{{ note.body }}</div></section>
 {% for addendum in note.addenda.all %}<section class="panel clinical-panel"><h2>Nachtrag</h2><p><small>{{ addendum.created_at|date:'d.m.Y H:i:s' }} · {{ addendum.author_name }}</small></p><div class="clinical-text">{{ addendum.body }}</div></section>{% endfor %}
 <section class="panel clinical-panel"><h2>Nachtrag hinzufügen</h2><p>Der ursprüngliche Eintrag bleibt erhalten. Ein gespeicherter Nachtrag kann anschließend ebenfalls nicht mehr geändert werden.</p><form method="post" action="{% url 'note_addendum' patient.pk note.pk %}">{% csrf_token %}{% include 'billing/form_fields.html' %}<button class="button">Nachtrag speichern</button></form></section>
+{% include 'billing/note_attachments.html' %}
 {% endblock %}

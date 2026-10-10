@@ -331,12 +331,12 @@ def patient_delete(request, pk):
             with transaction.atomic():
                 obj.delete()
         except ProtectedError:
-            messages.error(request, 'Der Patient hat noch Rechnungen oder Dokumentation. Rechnungen können zuerst gelöscht werden; Patienten mit Dokumentation bitte archivieren.')
+            messages.error(request, 'Der Patient hat noch Rechnungen oder Dokumentation. Bitte zuerst zugehörige Einträge löschen oder den Patienten archivieren.')
             return redirect('patient_detail', pk=pk)
         messages.success(request, 'Patient gelöscht.')
         return redirect('patients')
     return render(request, 'billing/delete_confirm.html', {'title': 'Patient löschen', 'object_name': str(obj),
-        'warning': 'Patientendaten werden dauerhaft gelöscht. Bestehende Rechnungen müssen zuerst gelöscht werden. Patienten mit Dokumentation oder Anhängen sind vor dem Löschen geschützt; bitte archivieren.',
+        'warning': 'Patientendaten werden dauerhaft gelöscht. Vorhandene Rechnungen, Behandlungseinträge und Anhänge müssen zuvor entfernt werden. Alternativ kannst du den Patienten archivieren.',
         'cancel_url': reverse('patient_detail', args=[pk]), 'nav': 'patients'})
 
 
