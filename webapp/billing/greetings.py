@@ -61,6 +61,12 @@ MESSAGES = (
     'Gib mir auch mal wieder die Switch 2!!1',
     'Deine Tochter will ständig Videospiele spielen...',
     'Tu mal lieber die Möhrchen!!!',
+    "Ich hätte mal wieder richtig Bock auf Aeon's End!",
+    'Kniffel ist mein Lieblingsspiel',
+    'Während ich hier Vibe-Programmiere bist du mit den Kids beim Friseur',
+    'Bald ist Weihnachten und ich hab mir überlegt ein Bett zu bauen...',
+    'Wenn ich noch einmal den Hazbin-Hotel Soundtrack hören muss... :D',
+    'Der Elektriker hat sich immer noch nicht gemeldet wegen der Wallbox!11',
 )
 
 

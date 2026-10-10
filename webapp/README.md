@@ -14,7 +14,7 @@ Lokaler Rechnungsmanager mit deutscher Oberfläche, Django, SQLite und direkter 
 - Übernahme der bisherigen Patienten-, Vorlagen- und Rechnungs-CSVs.
 - Responsive Oberfläche ohne externe Schriftarten, CDNs oder externe Dienste.
 - Optionales Firmenlogo (PNG/JPEG) und Brief-Layout nach der ursprünglichen Rechnungsvorlage.
-- „Grüße vom Entwickler“ standardmäßig deaktiviert; 59 zufällige Originalnachrichten.
+- „Grüße vom Entwickler“ standardmäßig deaktiviert; 65 zufällige Originalnachrichten.
 
 ## Unraid: erster Start
 
@@ -110,7 +110,7 @@ Zusätzlich `.env` getrennt und geschützt sichern. Bei Wiederherstellung den Co
 
 Unter **Einstellungen** kannst du ein Firmenlogo als PNG oder JPEG hochladen (maximal 2 MB und 4 Millionen Pixel). Ohne Upload enthält die Rechnung kein Logo. Du kannst das aktuelle Logo dort ansehen, ersetzen oder entfernen. Logos werden als normalisierte PNG-Dateien mit eindeutigen Namen im Datenordner gespeichert, nicht im Git-Repository. Frühere Logo-Dateien bleiben für die Rechnungsstände erhalten. Bereits fertig gespeicherte PDFs werden durch einen Logo-Wechsel nicht verändert.
 
-Die Checkbox **Grüße vom Entwickler** ist standardmäßig aus. Nur wenn sie aktiv ist, erscheint auf der Übersicht zufällig eine der 59 Originalnachrichten.
+Die Checkbox **Grüße vom Entwickler** ist standardmäßig aus. Nur wenn sie aktiv ist, erscheint auf der Übersicht zufällig eine der 65 Originalnachrichten.
 
 Im Rechnungsfilter gibt es **Alle Rechnungen**, **Offen**, **Bezahlt** und **Entwurf**.
 
@@ -166,7 +166,7 @@ Entwürfe, fertige Rechnungen und Leistungsvorlagen können nach Bestätigung ge
 
 Das hochgeladene Firmenlogo ersetzt das S im Menü. Ohne Logo bleibt das S erhalten. In den Einstellungen stehen Grün (Standard), Blau, Violett, Rosé und Dunkel zur Wahl; das Farbschema gilt für die gemeinsame Praxisoberfläche und verändert keine Rechnungs-PDFs.
 
-Die Checkbox „Grüße vom Entwickler“ ist standardmäßig aus. Wenn aktiviert, wird bei jedem Aufruf der Übersicht zufällig eine der 59 Originalnachrichten angezeigt. Eigene Begrüßungsnachrichten werden nicht mehr angeboten; das bisherige Feld wird bei der Migration entfernt.
+Die Checkbox „Grüße vom Entwickler“ ist standardmäßig aus. Wenn aktiviert, wird bei jedem Aufruf der Übersicht zufällig eine der 65 Originalnachrichten angezeigt. Eigene Begrüßungsnachrichten werden nicht mehr angeboten; das bisherige Feld wird bei der Migration entfernt.
 
 Zahlungsarten: Überweisung und Barzahlung. Die frühere Auswahl „Privatkasse“ wird beim Update automatisch in „Überweisung“ umgewandelt; gespeicherte PDFs bleiben unverändert.
 

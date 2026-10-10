@@ -439,10 +439,10 @@ class BillingTests(TestCase):
         self.assertEqual((Path(self.tmp.name) / invoice.pdf_path).read_bytes(), pdf)
 
 
-    def test_all_59_default_greetings_can_appear_on_dashboard(self):
+    def test_all_65_default_greetings_can_appear_on_dashboard(self):
         from .greetings import MESSAGES
-        self.assertEqual(len(MESSAGES), 59)
-        self.assertEqual(len(set(MESSAGES)), 59)
+        self.assertEqual(len(MESSAGES), 65)
+        self.assertEqual(len(set(MESSAGES)), 65)
         self.practice.developer_greetings = True
         self.practice.save()
         for index, message in enumerate(MESSAGES):
