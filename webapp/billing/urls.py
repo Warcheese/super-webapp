@@ -2,6 +2,8 @@ from django.urls import path
 from . import views as v
 
 urlpatterns = [
+    path('patienten/<int:pk>/status/', v.patient_toggle, name='patient_toggle'),
+    path('vorlagen/<int:pk>/status/', v.template_toggle, name='template_toggle'),
     path('rechnungen/<int:pk>/stornieren/', v.invoice_cancel, name='invoice_cancel'),
     path('rechnungen/<int:pk>/korrigieren/', v.invoice_cancel, {'correct': True}, name='invoice_correct'),
     path('rechnungen/<int:pk>/ausgleich/', v.invoice_settlement, name='invoice_settlement'),

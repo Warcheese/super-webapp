@@ -7,8 +7,7 @@
 <a class="{% if nav == 'invoices' %}active{% endif %}" href="{% url 'invoices' %}"><span>▤</span> Rechnungen</a>
 <a class="{% if nav == 'templates' %}active{% endif %}" href="{% url 'templates' %}"><span>⊞</span> Leistungen</a>
 <a class="{% if nav == 'settings' %}active{% endif %}" href="{% url 'settings' %}"><span>⚙</span> Einstellungen</a></nav>
-<div class="sidebar-note"><span class="dot"></span> Weniger Papierkram.<br>Mehr Zeit für deine Patienten.</div>
 {% if user.is_authenticated %}<div class="account"><span>{{ user.username }}</span><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="text-button">Abmelden</button></form></div>{% endif %}</aside>
-<main><header class="topbar"><span>Praxisorganisation, ganz einfach.</span><span class="date">{% now 'd. F Y' %}</span></header>
+<main><header class="topbar"><span class="super-name"><strong>S</strong>teffis <strong>U</strong>nglaublich <strong>P</strong>raktischer &amp; <strong>E</strong>infacher <strong>R</strong>echnungsmanager</span><span class="date">{% now 'd. F Y' %}</span></header>
 {% for message in messages %}<div role="status" class="notice {{ message.tags }}">{{ message }}</div>{% endfor %}
-{% block content %}{% endblock %}<footer class="app-footer">Mit Liebe gebaut. Für deinen Praxisalltag. <span>SUPER</span></footer></main></div></body></html>
+{% block content %}{% endblock %}</main></div></body></html>

@@ -631,3 +631,82 @@ class BillingTests(TestCase):
             records=self.client.get(reverse('invoices'), {'q':query}).context['invoices']
             self.assertEqual([i.pk for i in records], [original.pk])
         self.assertEqual(len(self.client.get(reverse('invoices'), {'q':'max','status':'draft'}).context['invoices']),0)
+
+
+    def test_patient_list_sorting_all_columns_both_directions(self):
+        self.patient.city='Zürich'
+        self.patient.phone='999'
+        self.patient.birth_date=date(2000,1,1)
+        self.patient.save()
+        other=Patient.objects.create(first_name='Anna',last_name='Alpha',street='Test',city='Aachen',phone='010',birth_date=date(1990,1,1),active=False)
+        for key in ['name','birth_date','city','phone','status']:
+            expected=[self.patient.pk,other.pk] if key=='status' else [other.pk,self.patient.pk]
+            for direction in ['asc','desc']:
+                response=self.client.get(reverse('patients'), {'sort':key,'direction':direction})
+                self.assertEqual([p.pk for p in response.context['patients']],expected if direction=='asc' else expected[::-1])
+                self.assertContains(response, 'aria-sort="ascending"' if direction=='asc' else 'aria-sort="descending"')
+        response=self.client.get(reverse('patients'),{'sort':'name','q':'Alpha'})
+        self.assertEqual([p.pk for p in response.context['patients']],[other.pk])
+        self.assertContains(response, 'direction=desc')
+        self.assertContains(response, 'q=Alpha')
+        self.assertEqual(self.client.get(reverse('patients'), {'sort':'invalid'}).status_code,200)
+
+    def test_template_list_sorting_all_columns_both_directions(self):
+        first=ServiceTemplate.objects.create(description='Alpha',code='1',price='2',active=True)
+        second=ServiceTemplate.objects.create(description='Zeta',code='9',price='10',active=False)
+        for key in ['description','code','price','status']:
+            for direction in ['asc','desc']:
+                response=self.client.get(reverse('templates'),{'sort':key,'direction':direction})
+                self.assertEqual([t.pk for t in response.context['templates']], [first.pk,second.pk] if direction=='asc' else [second.pk,first.pk])
+
+    def test_invoice_list_sorting_names_numbers_dates_status_and_numeric_totals(self):
+        original=finalize_invoice(self.invoice.pk,0)
+        patient=Patient.objects.create(first_name='Anna',last_name='Alpha',street='Test',city='Aachen')
+        other=Invoice.objects.create(patient=patient,patient_snapshot=patient.snapshot(),number='2025-999',date=date(2025,1,1),paid_at=date(2025,1,2))
+        InvoiceItem.objects.create(invoice=other,date=date(2025,1,1),description='Test',price='10')
+        for key in ['number','patient','date','status','total']:
+            for direction in ['asc','desc']:
+                response=self.client.get(reverse('invoices'),{'sort':key,'direction':direction})
+                self.assertEqual([i.pk for i in response.context['invoices']], [other.pk,original.pk] if direction=='asc' else [original.pk,other.pk])
+        response=self.client.get(reverse('invoices'),{'sort':'total','status':'open','q':'max'})
+        self.assertEqual([i.pk for i in response.context['invoices']],[original.pk])
+        self.assertContains(response,'status=open')
+        self.assertContains(response,'q=max')
+        from .services import cancel_invoice
+        cancellation,_=cancel_invoice(original.pk,reason='Test')
+        records=self.client.get(reverse('invoices'),{'sort':'total'}).context['invoices']
+        self.assertEqual(records[0].pk,cancellation.pk)
+
+    def test_status_switches_preserve_list_query_and_require_authenticated_csrf_post(self):
+        template=ServiceTemplate.objects.create(description='Test',price='10')
+        for name,obj,destination in [('patient_toggle',self.patient,'patients'),('template_toggle',template,'templates')]:
+            url=reverse(name,args=[obj.pk])
+            self.assertEqual(self.client.get(url).status_code,405)
+            self.assertEqual(self.client.post(url,{'active':'invalid'}).status_code,400)
+            csrf=Client(enforce_csrf_checks=True)
+            csrf.force_login(self.user)
+            self.assertEqual(csrf.post(url,{'active':'0'}).status_code,403)
+            self.client.logout()
+            self.assertEqual(self.client.post(url,{'active':'0'}).status_code,302)
+            self.client.force_login(self.user)
+            response=self.client.post(url,{'active':'0','list_query':'q=max&sort=status&direction=desc'},follow=False)
+            self.assertEqual(response.url, reverse(destination)+'?q=max&sort=status&direction=desc')
+            obj.refresh_from_db()
+            self.assertFalse(obj.active)
+            self.client.post(url,{'active':'0'})
+            obj.refresh_from_db()
+            self.assertFalse(obj.active)
+            self.client.post(url,{'active':'1'})
+            obj.refresh_from_db()
+            self.assertTrue(obj.active)
+
+    def test_shared_header_text_and_status_buttons(self):
+        template=ServiceTemplate.objects.create(description='Test',price='10')
+        for name in ['dashboard','patients','invoices','templates','settings']:
+            response=self.client.get(reverse(name))
+            self.assertNotContains(response,'Mit Liebe gebaut.')
+            self.assertNotContains(response,'Weniger Papierkram.')
+            self.assertNotContains(response,'Praxisorganisation, ganz einfach.')
+            self.assertContains(response,'<strong>S</strong>teffis <strong>U</strong>nglaublich <strong>P</strong>raktischer &amp; <strong>E</strong>infacher <strong>R</strong>echnungsmanager')
+        self.assertContains(self.client.get(reverse('patients')), reverse('patient_toggle',args=[self.patient.pk]))
+        self.assertContains(self.client.get(reverse('templates')), reverse('template_toggle',args=[template.pk]))

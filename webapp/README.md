@@ -169,3 +169,9 @@ Das hochgeladene Firmenlogo ersetzt das S im Menü. Ohne Logo bleibt das S erhal
 Die Checkbox „Grüße vom Entwickler“ ist standardmäßig aus. Wenn aktiviert, wird bei jedem Aufruf der Übersicht zufällig eine der 59 Originalnachrichten angezeigt. Eigene Begrüßungsnachrichten werden nicht mehr angeboten; das bisherige Feld wird bei der Migration entfernt.
 
 Zahlungsarten: Überweisung und Barzahlung. Die frühere Auswahl „Privatkasse“ wird beim Update automatisch in „Überweisung“ umgewandelt; gespeicherte PDFs bleiben unverändert.
+
+## Listen bedienen
+
+Auf Patienten-, Rechnungs- und Leistungslisten sortiert ein Klick auf eine Spaltenüberschrift aufsteigend, ein zweiter absteigend. Ein Pfeil zeigt die Richtung. Beträge werden numerisch und Datumswerte chronologisch sortiert; Patienten-Namen nach Nachname und Vorname. Die Sortierung erfolgt vor der Begrenzung auf 200 Treffer. Suche und Rechnungsstatus bleiben erhalten.
+
+In den Patienten- und Leistungslisten schaltet ein Klick auf „Aktiv“ bzw. „Archiviert“ direkt den Status um. Daten und bestehende Rechnungen bleiben erhalten. Archivierte Leistungsvorlagen werden im Rechnungsauswahldialog nicht mehr angeboten.

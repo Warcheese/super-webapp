@@ -1,6 +1,7 @@
 import hashlib
 import logging
-from datetime import timedelta
+from datetime import timedelta, date
+from urllib.parse import parse_qsl, urlencode
 from pathlib import Path
 from django.conf import settings as django_settings
 from django.contrib import messages
@@ -21,6 +22,7 @@ from .services import finalize_invoice, frozen_preview, cancel_invoice
 from .pdf import render_pdf
 from .importers import import_patients, import_templates, import_items
 from .greetings import random_greeting
+from .sorting import sort_records, text
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +75,11 @@ def patients(request):
     records = Patient.objects.all()
     if query:
         records = records.filter(Q(first_name__icontains=query)|Q(last_name__icontains=query)|Q(city__icontains=query))
-    return render(request, 'billing/patients.html', {'patients': records[:200], 'query': query, 'nav': 'patients'})
+    records, sorting = sort_records(records, request, {
+        'name': lambda p: (text(p.last_name), text(p.first_name)),
+        'birth_date': lambda p: p.birth_date or date.min, 'city': lambda p: text(p.city),
+        'phone': lambda p: text(p.phone), 'status': lambda p: 'Aktiv' if p.active else 'Archiviert'})
+    return render(request, 'billing/patients.html', {'patients': records[:200], 'query': query, 'nav': 'patients', **sorting})
 
 
 @login_required
@@ -114,7 +120,11 @@ def invoices(request):
             current_name &= Q(patient__first_name__icontains=part) | Q(patient__last_name__icontains=part)
             saved_name &= Q(patient_snapshot__first_name__icontains=part) | Q(patient_snapshot__last_name__icontains=part)
         records = records.filter(Q(number__icontains=query) | current_name | saved_name)
-    return render(request, 'billing/invoices.html', {'invoices': records[:200], 'query': query, 'status': status, 'nav': 'invoices'})
+    records, sorting = sort_records(records, request, {
+        'number': lambda i: (i.date.year, int(i.number.rsplit('-', 1)[-1])) if i.number else (0, 0),
+        'patient': lambda i: text(i.recipient), 'date': lambda i: i.date,
+        'status': lambda i: text(i.status), 'total': lambda i: i.total})
+    return render(request, 'billing/invoices.html', {'invoices': records[:200], 'query': query, 'status': status, 'nav': 'invoices', **sorting})
 
 
 @login_required
@@ -264,7 +274,10 @@ def sequence_update(request):
 
 @login_required
 def templates(request):
-    return render(request, 'billing/templates.html', {'templates': ServiceTemplate.objects.all(), 'nav': 'templates'})
+    records, sorting = sort_records(ServiceTemplate.objects.all(), request, {
+        'description': lambda t: text(t.description), 'code': lambda t: text(t.code),
+        'price': lambda t: t.price, 'status': lambda t: 'Aktiv' if t.active else 'Archiviert'})
+    return render(request, 'billing/templates.html', {'templates': records, 'nav': 'templates', **sorting})
 
 
 @login_required
@@ -411,3 +424,28 @@ def invoice_settlement(request, pk):
     else:
         messages.error(request, 'Bitte gültige Angaben zur Rückzahlung / Verrechnung eingeben.')
     return redirect('invoice_detail', pk=pk)
+
+
+@login_required
+@require_POST
+def patient_toggle(request, pk):
+    return toggle_record(request, Patient, pk, 'patients')
+
+
+@login_required
+@require_POST
+def template_toggle(request, pk):
+    return toggle_record(request, ServiceTemplate, pk, 'templates')
+
+
+def toggle_record(request, model, pk, destination):
+    obj = get_object_or_404(model, pk=pk)
+    active = request.POST.get('active')
+    if active not in ['0', '1']:
+        return HttpResponse('Ungültiger Status.', status=400)
+    model.objects.filter(pk=obj.pk).update(active=active == '1')
+    messages.success(request, 'Status auf Aktiv gesetzt.' if active == '1' else 'Status auf Archiviert gesetzt.')
+    params = [(key, value) for key, value in parse_qsl(request.POST.get('list_query', ''))
+              if key in ['q', 'sort', 'direction', 'status']]
+    url = reverse(destination)
+    return redirect(url + ('?' + urlencode(params) if params else ''))

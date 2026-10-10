@@ -1,0 +1,1 @@
+<th{% if numeric %} class="number"{% endif %}{% if enabled %} aria-sort="{{ aria_sort }}"{% endif %}>{% if enabled %}<a class="sort-link" href="{{ url }}">{{ label }} <span aria-hidden="true">{% if active %}{% if direction == 'desc' %}↓{% else %}↑{% endif %}{% else %}↕{% endif %}</span></a>{% else %}{{ label }}{% endif %}</th>
