@@ -710,3 +710,56 @@ class BillingTests(TestCase):
             self.assertContains(response,'<strong>S</strong>teffis <strong>U</strong>nglaublich <strong>P</strong>raktischer &amp; <strong>E</strong>infacher <strong>R</strong>echnungsmanager')
         self.assertContains(self.client.get(reverse('patients')), reverse('patient_toggle',args=[self.patient.pk]))
         self.assertContains(self.client.get(reverse('templates')), reverse('template_toggle',args=[template.pk]))
+
+
+    def test_ajax_status_switch_returns_state_without_flash_message(self):
+        template=ServiceTemplate.objects.create(description='Test',price='10')
+        for name,obj in [('patient_toggle',self.patient),('template_toggle',template)]:
+            for value,expected in [('0',False),('1',True)]:
+                response=self.client.post(reverse(name,args=[obj.pk]),{'active':value},HTTP_ACCEPT='application/json')
+                self.assertEqual(response.status_code,200)
+                self.assertEqual(response.json(),{'active':expected,'label':'Aktiv' if expected else 'Archiviert'})
+                obj.refresh_from_db()
+                self.assertEqual(obj.active,expected)
+            response=self.client.get(reverse('patients'))
+            self.assertNotContains(response,'Status auf Aktiv gesetzt.')
+            self.assertNotContains(response,'Status auf Archiviert gesetzt.')
+        self.assertContains(self.client.get(reverse('patients')), 'Müller, Max')
+
+    def test_dashboard_income_uses_payment_year_and_excludes_drafts_and_cancellations(self):
+        from .services import cancel_invoice
+        from django.utils import timezone
+        year=timezone.localdate().year
+        original=finalize_invoice(self.invoice.pk,0)
+        original.paid_at=date(year,1,1)
+        original.save()
+        previous=Invoice.objects.create(patient=self.patient,number=f'{year-1}-900',patient_snapshot=self.patient.snapshot(),paid_at=date(year-1,12,31))
+        InvoiceItem.objects.create(invoice=previous,date=date.today(),description='Test',price='10')
+        draft=Invoice.objects.create(patient=self.patient,paid_at=date(year,1,1))
+        InvoiceItem.objects.create(invoice=draft,date=date.today(),description='Test',price='100')
+        response=self.client.get(reverse('dashboard'))
+        self.assertEqual(response.context['income_year'],year)
+        self.assertEqual(response.context['income_total'],Decimal('49.98'))
+        self.assertContains(response,f'Einnahmen {year}')
+        cancel_invoice(original.pk,reason='Fehler',settlement='pending')
+        self.assertEqual(self.client.get(reverse('dashboard')).context['income_total'],Decimal('0.00'))
+        with patch('billing.views.timezone.localdate',return_value=date(year-1,12,31)):
+            response=self.client.get(reverse('dashboard'))
+        self.assertEqual(response.context['income_year'],year-1)
+        self.assertEqual(response.context['income_total'],Decimal('10.00'))
+
+    def test_dashboard_open_preview_shows_oldest_and_has_filtered_link(self):
+        from django.utils import timezone
+        year=timezone.localdate().year
+        ids=[]
+        for index in range(8):
+            obj=Invoice.objects.create(patient=self.patient,number=f'{year}-9{index:02}',date=date(year,1,index+1),patient_snapshot=self.patient.snapshot())
+            InvoiceItem.objects.create(invoice=obj,date=date.today(),description='Test',price='10')
+            ids.append(obj.pk)
+        response=self.client.get(reverse('dashboard'))
+        self.assertEqual([i.pk for i in response.context['open_preview']],ids[:6])
+        self.assertContains(response,'Noch offene Rechnungen')
+        self.assertContains(response,reverse('invoices')+'?status=open')
+        self.assertNotContains(response,'Von der Behandlung zur Rechnung.')
+        self.assertEqual(response.context['open_total'],Decimal('80.00'))
+

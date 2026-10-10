@@ -57,3 +57,41 @@
   });
   total();
 })();
+
+
+// Keep each row in place while changing its status, without reloading the list.
+(() => {
+  for (const form of document.querySelectorAll('.status-form')) {
+    const button = form.querySelector('button');
+    const state = form.querySelector('[name="active"]');
+    const error = document.createElement('span');
+    error.className = 'status-error';
+    error.setAttribute('role', 'alert');
+    form.append(error);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (button.disabled) return;
+      button.disabled = true;
+      error.textContent = '';
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST', body: new FormData(form), credentials: 'same-origin',
+          headers: {'Accept': 'application/json'}
+        });
+        if (!response.ok || !response.headers.get('Content-Type')?.includes('application/json')) {
+          throw new Error('Status konnte nicht gespeichert werden. Bitte erneut versuchen oder neu anmelden.');
+        }
+        const data = await response.json();
+        button.textContent = data.label;
+        button.classList.toggle('paid', data.active);
+        button.classList.toggle('draft', !data.active);
+        button.setAttribute('aria-label', `${form.dataset.statusName} ${data.active ? 'archivieren' : 'aktivieren'}`);
+        state.value = data.active ? '0' : '1';
+      } catch (failure) {
+        error.textContent = 'Status konnte nicht gespeichert werden. Bitte erneut versuchen oder neu anmelden.';
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+})();

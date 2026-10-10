@@ -22,3 +22,5 @@ body[data-theme="dark"] .brand{color:var(--ink)}
 
 .account{margin-top:auto}.topbar{gap:20px}.super-name{max-width:calc(100% - 110px);line-height:1.6}.super-name strong{color:var(--ink);font-weight:800}.sort-link{color:inherit;display:inline-flex;align-items:center;gap:8px}.sort-link span{font-size:12px}.sort-link:hover{color:var(--green)}.status-form{margin:0}.status-toggle{border:0;cursor:pointer;font:inherit;font-size:11px;min-height:32px;min-width:72px}.status-toggle:hover{box-shadow:0 0 0 2px var(--line)}
 @media(max-width:740px){.topbar{height:auto;min-height:65px;padding:12px 0;align-items:flex-start}.super-name{max-width:100%;flex:1}.date{white-space:nowrap}}
+
+.status-error{display:block;color:#a84636;font-size:11px;max-width:230px}.status-error:empty{display:none}.status-toggle:disabled{opacity:.6;cursor:wait}

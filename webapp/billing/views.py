@@ -1,6 +1,7 @@
 import hashlib
 import logging
 from datetime import timedelta, date
+from decimal import Decimal
 from urllib.parse import parse_qsl, urlencode
 from pathlib import Path
 from django.conf import settings as django_settings
@@ -11,7 +12,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.db.models.deletion import ProtectedError
-from django.http import FileResponse, HttpResponse, Http404
+from django.http import FileResponse, HttpResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -61,8 +62,12 @@ def dashboard(request):
     invoices = Invoice.objects.select_related('patient', 'cancellation', 'cancellation_of', 'correction_of').prefetch_related('items')
     open_invoices = invoices.filter(number__isnull=False, paid_at__isnull=True, cancellation__isnull=True, cancellation_of__isnull=True)
     practice = Practice.objects.filter(pk=1).first()
+    year = timezone.localdate().year
+    paid_this_year = invoices.filter(number__isnull=False, paid_at__year=year, cancellation__isnull=True, cancellation_of__isnull=True)
     return render(request, 'billing/dashboard.html', {
-        'recent': invoices[:6], 'patients_count': Patient.objects.filter(active=True).count(),
+        'recent': invoices[:6], 'income_year': year,
+        'income_total': sum((i.total for i in paid_this_year), Decimal('0.00')),
+        'open_preview': open_invoices.order_by('date', 'pk')[:6],
         'greeting': random_greeting() if practice and practice.developer_greetings else '',
         'drafts_count': invoices.filter(number__isnull=True).count(),
         'open_count': open_invoices.count(), 'open_total': sum(i.total for i in open_invoices),
@@ -444,7 +449,8 @@ def toggle_record(request, model, pk, destination):
     if active not in ['0', '1']:
         return HttpResponse('Ungültiger Status.', status=400)
     model.objects.filter(pk=obj.pk).update(active=active == '1')
-    messages.success(request, 'Status auf Aktiv gesetzt.' if active == '1' else 'Status auf Archiviert gesetzt.')
+    if 'application/json' in request.headers.get('Accept', ''):
+        return JsonResponse({'active': active == '1', 'label': 'Aktiv' if active == '1' else 'Archiviert'})
     params = [(key, value) for key, value in parse_qsl(request.POST.get('list_query', ''))
               if key in ['q', 'sort', 'direction', 'status']]
     url = reverse(destination)

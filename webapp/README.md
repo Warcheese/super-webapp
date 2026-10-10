@@ -175,3 +175,7 @@ Zahlungsarten: Überweisung und Barzahlung. Die frühere Auswahl „Privatkasse�
 Auf Patienten-, Rechnungs- und Leistungslisten sortiert ein Klick auf eine Spaltenüberschrift aufsteigend, ein zweiter absteigend. Ein Pfeil zeigt die Richtung. Beträge werden numerisch und Datumswerte chronologisch sortiert; Patienten-Namen nach Nachname und Vorname. Die Sortierung erfolgt vor der Begrenzung auf 200 Treffer. Suche und Rechnungsstatus bleiben erhalten.
 
 In den Patienten- und Leistungslisten schaltet ein Klick auf „Aktiv“ bzw. „Archiviert“ direkt den Status um. Daten und bestehende Rechnungen bleiben erhalten. Archivierte Leistungsvorlagen werden im Rechnungsauswahldialog nicht mehr angeboten.
+
+Die Übersicht zeigt die Einnahmen des aktuellen Jahres als Summe bezahlter, nicht stornierter Rechnungen nach dem Zahlungsdatum. Das Jahr wechselt automatisch. Die Liste offener Rechnungen zeigt die sechs ältesten offenen Rechnungen und verlinkt alle offenen Rechnungen.
+
+Die Patientenliste zeigt Nachname, Vorname. Mit JavaScript ändern die Status-Schalter den Eintrag direkt, ohne Seitenwechsel oder Erfolgsmeldung; Scrollposition und Zeilenposition bleiben erhalten. Ohne JavaScript bleibt das normale Formular verfügbar.
