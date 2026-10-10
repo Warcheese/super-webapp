@@ -1,3 +1,4 @@
+from pathlib import Path
 from decimal import Decimal, ROUND_HALF_UP
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -144,7 +145,10 @@ class LoginAttempt(models.Model):
 
 
 def clinical_attachment_path(instance, filename):
-    return f'documents/{uuid4().hex}.docx'
+    suffix = Path(filename).suffix.lower()
+    if len(suffix) > 20 or not suffix[1:].isalnum():
+        suffix = ''
+    return f'documents/{uuid4().hex}{suffix}'
 
 
 class TreatmentNote(models.Model):

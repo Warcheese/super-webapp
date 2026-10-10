@@ -32,7 +32,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATA_DIR = Path(os.getenv('SUPER_DATA_DIR', str(BASE_DIR / 'data')))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 MEDIA_ROOT = DATA_DIR
-DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 24 * 1024 * 1024
 DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3',
                         'NAME': DATA_DIR / 'super.sqlite3',
                         'OPTIONS': {'timeout': 20, 'transaction_mode': 'IMMEDIATE'}}}

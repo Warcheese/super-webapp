@@ -2,13 +2,12 @@ from io import BytesIO
 from pathlib import Path
 import tempfile
 from unittest.mock import patch
-from zipfile import ZipFile
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings, Client
 from django.urls import reverse
-from docx import Document
+from pypdf import PdfReader
 from .models import Patient, TreatmentNote, TreatmentAddendum, ClinicalAttachment
 
 
@@ -37,11 +36,8 @@ class ClinicalTests(TestCase):
         self.note.refresh_from_db()
 
     def docx(self):
-        doc = Document()
-        doc.add_paragraph('Originaldokument mit ä, ö und ü.')
-        stream = BytesIO()
-        doc.save(stream)
-        return stream.getvalue()
+        # An existing Word file is now treated as an opaque, unchanged attachment.
+        return b'Original attachment bytes'
 
     def upload(self, data=None, name='Altakte.docx'):
         return self.client.post(reverse('attachment_upload', args=[self.patient.pk]), {'file': SimpleUploadedFile(name, self.docx() if data is None else data)})
@@ -127,16 +123,16 @@ class ClinicalTests(TestCase):
         Path(attachment.file.path).write_bytes(b'changed')
         self.assertEqual(self.client.get(url).status_code, 409)
 
-    def test_invalid_uploads_rejected(self):
-        for name, content in [('test.docx', b'broken'), ('test.pdf', self.docx())]:
-            self.assertEqual(self.upload(content, name).status_code, 400)
-        stream = BytesIO()
-        with ZipFile(stream, 'w') as archive:
-            archive.writestr('[Content_Types].xml', '')
-            archive.writestr('word/document.xml', '')
-            archive.writestr('word/vbaProject.bin', 'macro')
-        self.assertEqual(self.upload(stream.getvalue()).status_code, 400)
-        self.assertFalse(ClinicalAttachment.objects.exists())
+    def test_generic_uploads_and_limit(self):
+        for name, content in [('Befund.pdf', b'%PDF-original'), ('Foto.jpg', b'photo'), ('Messwerte.csv', b'a,b'), ('notizen.txt', b'notizen'), ('datei', b'opaque')]:
+            self.assertEqual(self.upload(content, name).status_code, 302)
+            attachment = ClinicalAttachment.objects.latest('pk')
+            self.assertEqual(Path(attachment.file.path).read_bytes(), content)
+            response = self.client.get(reverse('attachment_download', args=[self.patient.pk, attachment.pk]))
+            self.assertEqual(response['Content-Type'], 'application/octet-stream')
+            self.assertTrue(response['Content-Disposition'].startswith('attachment;'))
+        self.assertEqual(self.upload(b'a' * (20 * 1024 * 1024 + 1), 'gross.bin').status_code, 400)
+        self.assertEqual(ClinicalAttachment.objects.count(), 5)
 
     def test_wrong_patient_cannot_access_notes_or_files(self):
         self.upload()
@@ -144,23 +140,25 @@ class ClinicalTests(TestCase):
         for route, pk in [('note_edit', self.note.pk), ('note_detail', self.note.pk), ('note_export', self.note.pk), ('attachment_download', attachment.pk)]:
             self.assertEqual(self.client.get(reverse(route, args=[self.other.pk, pk])).status_code, 404)
 
-    def test_word_export_draft_final_addenda_and_original_listing(self):
+    def test_pdf_export_draft_final_addenda_and_original_listing(self):
         url = reverse('note_export', args=[self.patient.pk, self.note.pk])
         response = self.client.get(url)
-        paragraphs = Document(BytesIO(b''.join(response.streaming_content))).paragraphs
-        self.assertIn('ENTWURF', '\n'.join(p.text for p in paragraphs))
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response['Content-Disposition'].endswith('.pdf\"'))
+        text = '\n'.join(p.extract_text() for p in PdfReader(BytesIO(b''.join(response.streaming_content))).pages)
+        self.assertIn('ENTWURF', text)
         self.finalize()
         TreatmentAddendum.objects.create(note=self.note, body='Nachtrag: Wärme', author_name='steffi')
         self.patient.last_name = 'Geändert'
         self.patient.save()
         response = self.client.get(url)
-        text = '\n'.join(p.text for p in Document(BytesIO(b''.join(response.streaming_content))).paragraphs)
+        text = '\n'.join(p.extract_text() for p in PdfReader(BytesIO(b''.join(response.streaming_content))).pages)
         self.assertIn('Müller', text)
         self.assertIn('Nachtrag: Wärme', text)
         self.assertNotIn('ENTWURF', text)
         self.upload()
         response = self.client.get(reverse('documentation_export', args=[self.patient.pk]))
-        text = '\n'.join(p.text for p in Document(BytesIO(b''.join(response.streaming_content))).paragraphs)
+        text = '\n'.join(p.extract_text() for p in PdfReader(BytesIO(b''.join(response.streaming_content))).pages)
         self.assertIn('Altakte.docx', text)
         self.assertNotIn('Originaldokument mit', text)
 
@@ -204,3 +202,57 @@ class ClinicalTests(TestCase):
         response = self.client.get(url, {'q': 'Kopf'})
         self.assertContains(response, 'Kopfschmerz')
         self.assertNotContains(response, 'Altakte.docx')
+
+    def test_documentation_menu_and_global_filters(self):
+        self.note.body = 'Schulterbefund'
+        self.note.save()
+        closed = TreatmentNote.objects.create(patient=self.other, body='Kniebefund', finalized_at=__import__('django.utils.timezone', fromlist=['now']).now(), patient_snapshot=self.other.snapshot(), author_name='steffi')
+        url = reverse('documentation')
+        response = self.client.get(url)
+        self.assertContains(response, 'href="/dokumentation/"')
+        self.assertContains(response, 'Schulterbefund')
+        self.assertContains(response, 'Kniebefund')
+        self.assertNotContains(response, 'als Word')
+        response = self.client.get(url, {'status': 'draft'})
+        self.assertContains(response, 'Schulterbefund')
+        self.assertNotContains(response, 'Kniebefund')
+        response = self.client.get(url, {'status': 'final'})
+        self.assertNotContains(response, 'Schulterbefund')
+        self.assertContains(response, 'Kniebefund')
+        response = self.client.get(url, {'patient': self.other.pk})
+        self.assertNotContains(response, 'Schulterbefund')
+        self.assertContains(response, 'Kniebefund')
+        self.assertContains(self.client.get(url, {'q': 'Müller'}), 'Schulterbefund')
+        self.assertNotContains(self.client.get(url, {'q': 'Müller'}), 'Kniebefund')
+        self.assertEqual(self.client.get(url, {'patient': 'invalid', 'status': 'unknown'}).status_code, 200)
+        self.client.logout()
+        self.assertEqual(self.client.get(url).status_code, 302)
+
+    def test_documentation_pagination_preserves_filters(self):
+        TreatmentNote.objects.bulk_create([TreatmentNote(patient=self.patient, body='Befund '+str(i)) for i in range(30)])
+        response = self.client.get(reverse('documentation'), {'status': 'draft', 'patient': self.patient.pk, 'q': 'Befund'})
+        self.assertEqual(len(response.context['page_obj']), 25)
+        self.assertEqual(response.context['page_obj'].paginator.count, 30)
+        self.assertContains(response, 'status=draft')
+        response = self.client.get(reverse('documentation'), {'status': 'draft', 'patient': self.patient.pk, 'q': 'Befund', 'page': 2})
+        self.assertEqual(len(response.context['page_obj']), 5)
+
+    def test_global_new_note_selection(self):
+        url = reverse('documentation_new')
+        self.assertEqual(self.client.get(url).status_code, 405)
+        count = TreatmentNote.objects.count()
+        self.assertEqual(self.client.post(url, {'patient': 'invalid'}).status_code, 302)
+        self.assertEqual(TreatmentNote.objects.count(), count)
+        self.assertEqual(self.client.post(url, {'patient': self.other.pk}).status_code, 302)
+        self.assertEqual(TreatmentNote.objects.latest('pk').patient, self.other)
+
+    def test_pdf_long_text_paginates_and_escapes_markup(self):
+        self.note.body = ('Befund <b> & Wärme\n' * 250) + 'ENDE DER DOKUMENTATION'
+        self.note.save()
+        response = self.client.get(reverse('note_export', args=[self.patient.pk, self.note.pk]))
+        reader = PdfReader(BytesIO(b''.join(response.streaming_content)))
+        self.assertGreater(len(reader.pages), 1)
+        text = '\n'.join(page.extract_text() for page in reader.pages)
+        self.assertIn('Befund <b> & Wärme', text)
+        self.assertIn('ENDE DER DOKUMENTATION', text)
+        self.assertIn(f'Seite {len(reader.pages)} von {len(reader.pages)}', reader.pages[-1].extract_text())

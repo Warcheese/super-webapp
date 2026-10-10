@@ -4,6 +4,7 @@
 <div class="nav-label">DEINE PRAXIS</div><nav aria-label="Hauptnavigation">
 <a class="{% if nav == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><span>◈</span> Übersicht</a>
 <a class="{% if nav == 'patients' %}active{% endif %}" href="{% url 'patients' %}"><span>◎</span> Patienten</a>
+<a class="{% if nav == 'documentation' %}active{% endif %}" href="{% url 'documentation' %}"><span>▧</span> Dokumentation</a>
 <a class="{% if nav == 'invoices' %}active{% endif %}" href="{% url 'invoices' %}"><span>▤</span> Rechnungen</a>
 <a class="{% if nav == 'templates' %}active{% endif %}" href="{% url 'templates' %}"><span>⊞</span> Leistungen</a>
 <a class="{% if nav == 'settings' %}active{% endif %}" href="{% url 'settings' %}"><span>⚙</span> Einstellungen</a></nav>

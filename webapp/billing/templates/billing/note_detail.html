@@ -1,7 +1,7 @@
 {% extends 'billing/base.html' %}{% block content %}
 <a class="back" href="{% url 'clinical_record' patient.pk %}">← Dokumentation · {{ patient }}</a>
-<section class="page-heading"><div><div class="eyebrow">BEHANDLUNG · ABGESCHLOSSEN</div><h1>{{ note.date|date:'d.m.Y' }}</h1><p>{{ patient }}</p></div><a class="button secondary" href="{% url 'note_export' patient.pk note.pk %}">Eintrag als Word</a></section>
-<section class="panel"><p><small>Abgeschlossen am {{ note.finalized_at|date:'d.m.Y H:i:s' }} von {{ note.author_name }}</small></p><div class="clinical-text">{{ note.body }}</div></section>
-{% for addendum in note.addenda.all %}<section class="panel"><h2>Nachtrag</h2><p><small>{{ addendum.created_at|date:'d.m.Y H:i:s' }} · {{ addendum.author_name }}</small></p><div class="clinical-text">{{ addendum.body }}</div></section>{% endfor %}
-<section class="panel"><h2>Nachtrag hinzufügen</h2><p>Der ursprüngliche Eintrag bleibt erhalten. Ein gespeicherter Nachtrag kann anschließend ebenfalls nicht mehr geändert werden.</p><form method="post" action="{% url 'note_addendum' patient.pk note.pk %}">{% csrf_token %}{% include 'billing/form_fields.html' %}<button class="button">Nachtrag speichern</button></form></section>
+<section class="page-heading"><div><div class="eyebrow">BEHANDLUNG · ABGESCHLOSSEN</div><h1>{{ note.date|date:'d.m.Y' }}</h1><p>{{ patient }}</p></div><a class="button secondary" href="{% url 'note_export' patient.pk note.pk %}">Eintrag als PDF</a></section>
+<section class="panel clinical-panel"><p><small>Abgeschlossen am {{ note.finalized_at|date:'d.m.Y H:i:s' }} von {{ note.author_name }}</small></p><div class="clinical-text">{{ note.body }}</div></section>
+{% for addendum in note.addenda.all %}<section class="panel clinical-panel"><h2>Nachtrag</h2><p><small>{{ addendum.created_at|date:'d.m.Y H:i:s' }} · {{ addendum.author_name }}</small></p><div class="clinical-text">{{ addendum.body }}</div></section>{% endfor %}
+<section class="panel clinical-panel"><h2>Nachtrag hinzufügen</h2><p>Der ursprüngliche Eintrag bleibt erhalten. Ein gespeicherter Nachtrag kann anschließend ebenfalls nicht mehr geändert werden.</p><form method="post" action="{% url 'note_addendum' patient.pk note.pk %}">{% csrf_token %}{% include 'billing/form_fields.html' %}<button class="button">Nachtrag speichern</button></form></section>
 {% endblock %}

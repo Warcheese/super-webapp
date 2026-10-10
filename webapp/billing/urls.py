@@ -3,6 +3,8 @@ from . import views as v
 from . import clinical_views as c
 
 urlpatterns = [
+    path('dokumentation/', c.documentation, name='documentation'),
+    path('dokumentation/neu/', c.documentation_new, name='documentation_new'),
     path('patienten/<int:patient_pk>/dokumentation/', c.clinical_record, name='clinical_record'),
     path('patienten/<int:patient_pk>/dokumentation/neu/', c.note_new, name='note_new'),
     path('patienten/<int:patient_pk>/dokumentation/export/', c.documentation_export, name='documentation_export'),

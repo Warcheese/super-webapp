@@ -4,6 +4,8 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from datetime import timedelta
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
@@ -17,6 +19,50 @@ from .clinical_export import export_documentation
 
 
 @login_required
+def documentation(request):
+    query = request.GET.get('q', '').strip()
+    status = request.GET.get('status', 'all')
+    if status not in ['all', 'draft', 'final']:
+        status = 'all'
+    patient_id = request.GET.get('patient', '')
+    selected_patient = Patient.objects.filter(pk=patient_id).first() if patient_id.isdecimal() else None
+    notes = TreatmentNote.objects.select_related('patient').order_by('-date', '-updated_at', '-pk')
+    if selected_patient:
+        notes = notes.filter(patient=selected_patient)
+    if query:
+        notes = notes.filter(Q(patient__first_name__icontains=query) | Q(patient__last_name__icontains=query) |
+                             Q(body__icontains=query) | Q(addenda__body__icontains=query)).distinct()
+    if status == 'draft':
+        notes = notes.filter(finalized_at__isnull=True)
+    elif status == 'final':
+        notes = notes.filter(finalized_at__isnull=False)
+    params = request.GET.copy()
+    params.pop('page', None)
+    today = timezone.localdate()
+    monday = today - timedelta(days=today.weekday())
+    return render(request, 'billing/documentation.html', {
+        'page_obj': Paginator(notes, 25).get_page(request.GET.get('page')),
+        'query': query, 'status': status, 'selected_patient': selected_patient,
+        'patients': Patient.objects.order_by('last_name', 'first_name', 'pk'),
+        'query_params': params.urlencode(), 'nav': 'documentation',
+        'draft_count': TreatmentNote.objects.filter(finalized_at__isnull=True).count(),
+        'week_count': TreatmentNote.objects.filter(date__gte=monday, date__lt=monday+timedelta(days=7)).count(),
+    })
+
+
+@login_required
+@require_POST
+def documentation_new(request):
+    patient_id = request.POST.get('patient', '')
+    patient = Patient.objects.filter(pk=patient_id).first() if patient_id.isdecimal() else None
+    if not patient:
+        messages.error(request, 'Bitte zuerst einen Patienten auswählen.')
+        return redirect('documentation')
+    note = TreatmentNote.objects.create(patient=patient, created_by=request.user, edited_by=request.user)
+    return redirect('note_edit', patient_pk=patient.pk, pk=note.pk)
+
+
+@login_required
 def clinical_record(request, patient_pk):
     patient = get_object_or_404(Patient, pk=patient_pk)
     query = request.GET.get('q', '').strip()
@@ -26,7 +72,7 @@ def clinical_record(request, patient_pk):
         notes = notes.filter(Q(body__icontains=query) | Q(addenda__body__icontains=query)).distinct()
         attachments = attachments.filter(original_name__icontains=query)
     return render(request, 'billing/clinical_record.html', {'patient': patient, 'notes': notes,
-        'attachments': attachments, 'query': query, 'upload_form': ClinicalAttachmentForm(), 'nav': 'patients'})
+        'attachments': attachments, 'query': query, 'upload_form': ClinicalAttachmentForm(), 'nav': 'documentation'})
 
 
 @login_required
@@ -83,7 +129,7 @@ def note_edit(request, patient_pk, pk):
                     return redirect('note_detail' if action == 'finalize' else 'note_edit', patient_pk=patient_pk, pk=pk)
             if json_request:
                 return JsonResponse({'error': ' '.join(str(error) for errors in form.errors.values() for error in errors)}, status=status if status != 200 else 400)
-    return render(request, 'billing/note_edit.html', {'note': note, 'patient': note.patient, 'form': form, 'nav': 'patients'}, status=status)
+    return render(request, 'billing/note_edit.html', {'note': note, 'patient': note.patient, 'form': form, 'nav': 'documentation'}, status=status)
 
 
 @login_required
@@ -91,7 +137,7 @@ def note_detail(request, patient_pk, pk):
     note = get_object_or_404(TreatmentNote.objects.select_related('patient').prefetch_related('addenda'), pk=pk, patient_id=patient_pk)
     if not note.finalized_at:
         return redirect('note_edit', patient_pk=patient_pk, pk=pk)
-    return render(request, 'billing/note_detail.html', {'note': note, 'patient': note.patient, 'form': AddendumForm(), 'nav': 'patients'})
+    return render(request, 'billing/note_detail.html', {'note': note, 'patient': note.patient, 'form': AddendumForm(), 'nav': 'documentation'})
 
 
 @login_required
@@ -108,7 +154,7 @@ def note_addendum(request, patient_pk, pk):
             obj.save()
         messages.success(request, 'Nachtrag endgültig gespeichert. Der ursprüngliche Eintrag bleibt unverändert.')
         return redirect('note_detail', patient_pk=patient_pk, pk=pk)
-    return render(request, 'billing/note_detail.html', {'note': note, 'patient': note.patient, 'form': form, 'nav': 'patients'}, status=400)
+    return render(request, 'billing/note_detail.html', {'note': note, 'patient': note.patient, 'form': form, 'nav': 'documentation'}, status=400)
 
 
 @login_required
@@ -132,10 +178,10 @@ def attachment_upload(request, patient_pk):
             if attachment.file.name:
                 attachment.file.delete(save=False)
             raise
-        messages.success(request, 'Word-Dokument unverändert zur Patientenakte hinzugefügt.')
+        messages.success(request, 'Datei unverändert zur Patientenakte hinzugefügt.')
         return redirect('clinical_record', patient_pk=patient_pk)
     return render(request, 'billing/clinical_record.html', {'patient': patient, 'notes': patient.treatment_notes.prefetch_related('addenda'),
-        'attachments': patient.clinical_attachments.all(), 'upload_form': form, 'nav': 'patients'}, status=400)
+        'attachments': patient.clinical_attachments.all(), 'upload_form': form, 'nav': 'documentation'}, status=400)
 
 
 @login_required
@@ -149,7 +195,7 @@ def attachment_download(request, patient_pk, pk):
     if hashlib.sha256(data).hexdigest() != attachment.sha256:
         return HttpResponse('Prüfsumme stimmt nicht. Bitte Datensicherung prüfen.', status=409)
     return FileResponse(BytesIO(data), as_attachment=True, filename=attachment.original_name,
-        content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        content_type='application/octet-stream')
 
 
 @login_required
@@ -163,5 +209,5 @@ def documentation_export(request, patient_pk, pk=None):
         notes = patient.treatment_notes.prefetch_related('addenda').order_by('date', 'created_at', 'pk')
         attachments = patient.clinical_attachments.all()
     data = export_documentation(patient, notes, attachments)
-    return FileResponse(BytesIO(data), as_attachment=True, filename=f'Dokumentation-Patient-{patient.pk}{"-"+str(pk) if pk else ""}.docx',
-        content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    return FileResponse(BytesIO(data), as_attachment=True, filename=f'Dokumentation-Patient-{patient.pk}{"-"+str(pk) if pk else ""}.pdf',
+        content_type='application/pdf')
