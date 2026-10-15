@@ -125,7 +125,9 @@ def note_edit(request, patient_pk, pk):
                     if json_request:
                         return JsonResponse({'revision': note.revision, 'saved_at': timezone.localtime(note.updated_at).strftime('%H:%M:%S')})
                     messages.success(request, 'Dokumentation abgeschlossen.' if action == 'finalize' else 'Entwurf gespeichert.')
-                    return redirect('note_detail' if action == 'finalize' else 'note_edit', patient_pk=patient_pk, pk=pk)
+                    if action == 'finalize':
+                        return redirect('documentation')
+                    return redirect('note_edit', patient_pk=patient_pk, pk=pk)
             if json_request:
                 return JsonResponse({'error': ' '.join(str(error) for errors in form.errors.values() for error in errors)}, status=status if status != 200 else 400)
     return render(request, 'billing/note_edit.html', {'note': note, 'patient': note.patient, 'form': form, 'upload_form': ClinicalAttachmentForm(), 'nav': 'documentation'}, status=status)

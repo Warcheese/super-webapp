@@ -32,7 +32,7 @@ class ClinicalTests(TestCase):
 
     def finalize(self):
         response = self.client.post(self.edit, self.data(action='finalize'))
-        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('documentation'))
         self.note.refresh_from_db()
 
     def docx(self):
