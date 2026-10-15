@@ -32,6 +32,12 @@ class SuperLoginView(LoginView):
     template_name = 'registration/login.html'
     redirect_authenticated_user = True
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        practice = Practice.objects.only('logo').filter(pk=1).first()
+        context['login_logo'] = bool(practice and practice.logo)
+        return context
+
     def post(self, request, *args, **kwargs):
         # REMOTE_ADDR is intentional: untrusted forwarded headers must not bypass throttling.
         self.attempt_key = hashlib.sha256(request.META.get('REMOTE_ADDR', '').encode()).hexdigest()
@@ -67,6 +73,7 @@ def dashboard(request):
     return render(request, 'billing/dashboard.html', {
         'recent': invoices[:6], 'income_year': year,
         'income_total': sum((i.total for i in paid_this_year), Decimal('0.00')),
+        'income_count': len(paid_this_year),
         'open_preview': open_invoices.order_by('date', 'pk')[:6],
         'greeting': random_greeting() if practice and practice.developer_greetings else '',
         'drafts_count': invoices.filter(number__isnull=True).count(),
@@ -246,7 +253,7 @@ def practice_settings(request):
         'sequence_form': SequenceForm(initial={'next_number': sequence.next_number}), 'nav': 'settings'})
 
 
-@login_required
+# The selected practice logo is also displayed on the public login page.
 def practice_logo(request):
     practice = get_object_or_404(Practice, pk=1)
     if not practice.logo:

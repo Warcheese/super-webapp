@@ -287,9 +287,20 @@ class BillingTests(TestCase):
         # Preserve versions potentially referenced by existing invoices.
         self.assertTrue((Path(self.tmp.name)/old_path).is_file())
 
-    def test_logo_requires_authentication(self):
+    def test_login_uses_uploaded_logo_without_authentication(self):
         self.client.logout()
-        self.assertEqual(self.client.get(reverse('practice_logo')).status_code,302)
+        self.assertContains(self.client.get(reverse('login')), 'brand-icon')
+        self.client.force_login(self.user)
+        self.client.post(reverse('settings'), self.practice_data() | {'logo': self.logo_file()})
+        self.client.logout()
+        response = self.client.get(reverse('login'))
+        self.assertContains(response, 'class="brand-logo"')
+        self.assertNotContains(response, 'class="brand-icon"')
+        response = self.client.get(reverse('practice_logo'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/png')
+        response.close()
+        self.assertEqual(self.client.get(reverse('patients')).status_code, 302)
 
     def test_invalid_logo_rejected(self):
         invalid=SimpleUploadedFile('bad.png',b'not an image',content_type='image/png')
@@ -740,13 +751,17 @@ class BillingTests(TestCase):
         response=self.client.get(reverse('dashboard'))
         self.assertEqual(response.context['income_year'],year)
         self.assertEqual(response.context['income_total'],Decimal('49.98'))
+        self.assertEqual(response.context['income_count'], 1)
+        self.assertContains(response, f'1 bezahlte Rechnung im Jahr {year}')
         self.assertContains(response,f'Einnahmen {year}')
         cancel_invoice(original.pk,reason='Fehler',settlement='pending')
         self.assertEqual(self.client.get(reverse('dashboard')).context['income_total'],Decimal('0.00'))
+        self.assertEqual(self.client.get(reverse('dashboard')).context['income_count'], 0)
         with patch('billing.views.timezone.localdate',return_value=date(year-1,12,31)):
             response=self.client.get(reverse('dashboard'))
         self.assertEqual(response.context['income_year'],year-1)
         self.assertEqual(response.context['income_total'],Decimal('10.00'))
+        self.assertEqual(response.context['income_count'], 1)
 
     def test_dashboard_open_preview_shows_oldest_and_has_filtered_link(self):
         from django.utils import timezone

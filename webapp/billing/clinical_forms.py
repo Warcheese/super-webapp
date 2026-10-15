@@ -17,7 +17,7 @@ class TreatmentNoteForm(StyledModelForm):
     class Meta:
         model = TreatmentNote
         fields = ['date', 'body']
-        widgets = {'body': forms.Textarea(attrs={'rows': 16, 'placeholder': 'Symptome, Befund, Behandlung und Verlauf …'})}
+        widgets = {'body': forms.Textarea(attrs={'rows': 16, 'spellcheck': 'true', 'lang': 'de', 'placeholder': 'Symptome, Befund, Behandlung und Verlauf …'})}
 
 
 class AddendumForm(forms.ModelForm):
@@ -27,7 +27,7 @@ class AddendumForm(forms.ModelForm):
     class Meta:
         model = TreatmentAddendum
         fields = ['body']
-        widgets = {'body': forms.Textarea(attrs={'rows': 6})}
+        widgets = {'body': forms.Textarea(attrs={'rows': 6, 'spellcheck': 'true', 'lang': 'de'})}
 
 
 class ClinicalAttachmentForm(forms.Form):

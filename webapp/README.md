@@ -164,7 +164,7 @@ Entwürfe, fertige Rechnungen und Leistungsvorlagen können nach Bestätigung ge
 
 ## Oberfläche
 
-Das hochgeladene Firmenlogo ersetzt das S im Menü. Ohne Logo bleibt das S erhalten. In den Einstellungen stehen Grün (Standard), Blau, Violett, Rosé und Dunkel zur Wahl; das Farbschema gilt für die gemeinsame Praxisoberfläche und verändert keine Rechnungs-PDFs.
+Das hochgeladene Firmenlogo ersetzt das S im Menü und auf der Login-Seite. Das ausgewählte Logo ist deshalb auch vor der Anmeldung abrufbar. Ohne Logo bleibt das S erhalten. In den Einstellungen stehen Grün (Standard), Blau, Violett, Rosé und Dunkel zur Wahl; das Farbschema gilt für die gemeinsame Praxisoberfläche und verändert keine Rechnungs-PDFs.
 
 Die Checkbox „Grüße vom Entwickler“ ist standardmäßig aus. Wenn aktiviert, wird bei jedem Aufruf der Übersicht zufällig eine der 65 Originalnachrichten angezeigt. Eigene Begrüßungsnachrichten werden nicht mehr angeboten; das bisherige Feld wird bei der Migration entfernt.
 
@@ -176,7 +176,7 @@ Auf Patienten-, Rechnungs- und Leistungslisten sortiert ein Klick auf eine Spalt
 
 In den Patienten- und Leistungslisten schaltet ein Klick auf „Aktiv“ bzw. „Archiviert“ direkt den Status um. Daten und bestehende Rechnungen bleiben erhalten. Archivierte Leistungsvorlagen werden im Rechnungsauswahldialog nicht mehr angeboten.
 
-Die Übersicht zeigt die Einnahmen des aktuellen Jahres als Summe bezahlter, nicht stornierter Rechnungen nach dem Zahlungsdatum. Das Jahr wechselt automatisch. Die Liste offener Rechnungen zeigt die sechs ältesten offenen Rechnungen und verlinkt alle offenen Rechnungen.
+Die Übersicht zeigt die Einnahmen des aktuellen Jahres als Summe bezahlter, nicht stornierter Rechnungen nach dem Zahlungsdatum. Darunter steht die Anzahl der dafür berücksichtigten bezahlten Rechnungen. Das Jahr wechselt automatisch. Die Liste offener Rechnungen zeigt die sechs ältesten offenen Rechnungen und verlinkt alle offenen Rechnungen.
 
 Die Patientenliste zeigt Nachname, Vorname. Mit JavaScript ändern die Status-Schalter den Eintrag direkt, ohne Seitenwechsel oder Erfolgsmeldung; Scrollposition und Zeilenposition bleiben erhalten. Ohne JavaScript bleibt das normale Formular verfügbar.
 
@@ -191,3 +191,5 @@ Beliebige Dateien bis 20 MB lassen sich unverändert direkt an einen Behandlungs
 Texte werden in der vorhandenen SQLite-Datenbank gespeichert, Originaldokumente im Unterordner `documents` von `SUPER_DATA_DIR`. Beim aktuellen Unraid-Aufbau liegt alles unter `/mnt/user/super/super-data`, im Container unter `/data`. Die Sicherung muss weiterhin den gesamten Datenordner umfassen. Beim Update werden die neuen Tabellen automatisch angelegt; der bestehende Daten-Mount bleibt erhalten.
 
 Die Dokumentationsliste öffnet Behandlungseinträge über ihr Datum; Patientennamen sind dort keine Links. Neue Behandlungen können nur für aktive Patienten angelegt werden. Der Filter enthält weiterhin auch archivierte Patienten, damit ältere Dokumentationen erreichbar bleiben. In der Patientenakte führt der einzige Zurück-Link zum Patienten; die Überschrift nennt den Patienten ausdrücklich. Anhänge werden in der jeweiligen Behandlung hochgeladen und angezeigt. Beim Hochladen in einem Entwurf wartet die Oberfläche auf die Speicherung des aktuellen Textes.
+
+Die Freitextfelder für Behandlungen und Nachträge aktivieren die Browser-Rechtschreibprüfung mit `spellcheck="true"` und `lang="de"`. Ein deutsches Wörterbuch muss im Browser verfügbar und aktiviert sein.
