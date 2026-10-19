@@ -160,6 +160,7 @@ def invoice_edit(request, pk=None):
                 form.add_error(None, 'Der Entwurf wurde inzwischen geändert. Bitte die Seite neu laden.')
             elif valid and items_valid:
                 obj = form.save(commit=False)
+                obj.date = timezone.localdate()
                 obj.revision += 1
                 obj.save()
                 formset.instance = obj

@@ -778,3 +778,36 @@ class BillingTests(TestCase):
         self.assertNotContains(response,'Von der Behandlung zur Rechnung.')
         self.assertEqual(response.context['open_total'],Decimal('80.00'))
 
+
+    def test_draft_save_updates_date_but_finalizing_later_preserves_it(self):
+        from django.utils import timezone
+        self.invoice.date = date(2025, 12, 1)
+        self.invoice.save()
+        for today in [date(2025, 12, 29), date(2025, 12, 31)]:
+            data = self.post_data(revision=self.invoice.revision)
+            with patch('billing.views.timezone.localdate', return_value=today):
+                response = self.client.post(reverse('invoice_edit', args=[self.invoice.pk]), data)
+            self.assertEqual(response.status_code, 302)
+            self.invoice.refresh_from_db()
+            self.assertEqual(self.invoice.date, today)
+            self.item.refresh_from_db()
+            self.assertEqual(self.item.date, date(2026, 1, 1))
+        with patch('billing.services.timezone.localdate', return_value=date(2026, 1, 2)):
+            issued = finalize_invoice(self.invoice.pk, self.invoice.revision)
+        self.assertEqual(issued.date, date(2025, 12, 31))
+        self.assertTrue(issued.number.startswith('2025-'))
+        from pypdf import PdfReader
+        pdf = PdfReader(str(Path(self.tmp.name) / issued.pdf_path))
+        self.assertIn('31.12.2025', '\n'.join(page.extract_text() for page in pdf.pages))
+        with patch('billing.views.timezone.localdate', return_value=date(2026, 1, 3)):
+            self.client.post(reverse('invoice_edit', args=[issued.pk]), self.post_data(revision=issued.revision))
+        issued.refresh_from_db()
+        self.assertEqual(issued.date, date(2025, 12, 31))
+
+    def test_invalid_and_stale_draft_save_do_not_update_date(self):
+        self.invoice.date = date(2025, 10, 1)
+        self.invoice.save()
+        for data in [self.post_data(revision=999), self.post_data() | {'patient': ''}]:
+            self.client.post(reverse('invoice_edit', args=[self.invoice.pk]), data)
+            self.invoice.refresh_from_db()
+            self.assertEqual(self.invoice.date, date(2025, 10, 1))

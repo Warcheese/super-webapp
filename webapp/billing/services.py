@@ -53,8 +53,7 @@ def finalize_invoice(pk, revision):
                 raise ValidationError('Für Überweisungen bitte zuerst die IBAN in den Einstellungen ergänzen.')
             if invoice.payment_method == 'cash' and not invoice.cash_date:
                 raise ValidationError('Das Barzahlungsdatum fehlt.')
-            # Use actual issue date; prevent accidentally creating backdated invoices.
-            invoice.date = timezone.localdate()
+            # Keep the date set by the last successful draft save.
             sequence, _ = NumberSequence.objects.get_or_create(year=invoice.date.year)
             invoice.number = f'{sequence.year}-{sequence.next_number:03d}'
             root = Path(settings.DATA_DIR) / 'pdfs'
