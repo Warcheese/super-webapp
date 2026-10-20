@@ -147,6 +147,8 @@ def invoice_edit(request, pk=None):
         if obj.number:
             return redirect('invoice_detail', pk=obj.pk)
         initial = {'patient': request.GET.get('patient')} if not pk else None
+        if request.method == 'GET':
+            initial = (initial or {}) | {'date': timezone.localdate()}
         form = InvoiceForm(request.POST or None, instance=obj, initial=initial)
         formset = ItemFormSet(request.POST or None, instance=obj, prefix='items')
         if request.method == 'POST':
@@ -160,7 +162,6 @@ def invoice_edit(request, pk=None):
                 form.add_error(None, 'Der Entwurf wurde inzwischen geändert. Bitte die Seite neu laden.')
             elif valid and items_valid:
                 obj = form.save(commit=False)
-                obj.date = timezone.localdate()
                 obj.revision += 1
                 obj.save()
                 formset.instance = obj

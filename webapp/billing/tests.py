@@ -779,14 +779,19 @@ class BillingTests(TestCase):
         self.assertEqual(response.context['open_total'],Decimal('80.00'))
 
 
-    def test_draft_save_updates_date_but_finalizing_later_preserves_it(self):
+    def test_draft_open_prefills_today_but_finalizing_later_preserves_saved_date(self):
         from django.utils import timezone
         self.invoice.date = date(2025, 12, 1)
         self.invoice.save()
         for today in [date(2025, 12, 29), date(2025, 12, 31)]:
-            data = self.post_data(revision=self.invoice.revision)
             with patch('billing.views.timezone.localdate', return_value=today):
-                response = self.client.post(reverse('invoice_edit', args=[self.invoice.pk]), data)
+                opened = self.client.get(reverse('invoice_edit', args=[self.invoice.pk]))
+            self.assertEqual(opened.context['form']['date'].value(), today)
+            previous_date = self.invoice.date
+            self.invoice.refresh_from_db()
+            self.assertEqual(self.invoice.date, previous_date)
+            data = self.post_data(revision=self.invoice.revision) | {'date': today.isoformat()}
+            response = self.client.post(reverse('invoice_edit', args=[self.invoice.pk]), data)
             self.assertEqual(response.status_code, 302)
             self.invoice.refresh_from_db()
             self.assertEqual(self.invoice.date, today)
@@ -811,3 +816,22 @@ class BillingTests(TestCase):
             self.client.post(reverse('invoice_edit', args=[self.invoice.pk]), data)
             self.invoice.refresh_from_db()
             self.assertEqual(self.invoice.date, date(2025, 10, 1))
+
+    def test_manual_draft_date_survives_save_errors_and_finalization(self):
+        manual = date(2026, 2, 10)
+        data = self.post_data() | {'date': manual.isoformat()}
+        invalid = self.client.post(reverse('invoice_edit', args=[self.invoice.pk]), data | {'patient': ''})
+        self.assertEqual(invalid.context['form']['date'].value(), manual.isoformat())
+        response = self.client.post(reverse('invoice_edit', args=[self.invoice.pk]), data)
+        self.assertEqual(response.status_code, 302)
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.date, manual)
+        issued = finalize_invoice(self.invoice.pk, self.invoice.revision)
+        self.assertEqual(issued.date, manual)
+
+    def test_new_invoice_prefills_today_and_preserves_patient_preselection(self):
+        today = date(2026, 10, 20)
+        with patch('billing.views.timezone.localdate', return_value=today):
+            response = self.client.get(reverse('invoice_new'), {'patient': self.patient.pk})
+        self.assertEqual(response.context['form']['date'].value(), today)
+        self.assertEqual(str(response.context['form']['patient'].value()), str(self.patient.pk))
