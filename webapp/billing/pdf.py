@@ -113,7 +113,12 @@ def render_pdf(invoice, *, duplicate=False, preview=False):
     born = patient.get('birth_date', '')
     if born:
         born = date.fromisoformat(born).strftime('%d.%m.%Y')
-    metadata = ['<b>RECHNUNGSNUMMER</b>', escape(invoice.number or 'Noch nicht vergeben')]
+    display_number = invoice.number
+    if preview and not display_number:
+        from .models import NumberSequence
+        next_number = NumberSequence.objects.filter(year=invoice.date.year).values_list('next_number', flat=True).first() or 1
+        display_number = f'ENTWURF-{next_number:03d}'
+    metadata = ['<b>RECHNUNGSNUMMER</b>', escape(display_number or 'Noch nicht vergeben')]
     if born:
         metadata += ['<b>GEBURTSDATUM</b>', escape(born)]
     metadata += ['<b>RECHNUNGSDATUM</b>', invoice.date.strftime('%d.%m.%Y')]
@@ -165,8 +170,7 @@ def render_pdf(invoice, *, duplicate=False, preview=False):
             description = f'{description}\n{quantity} × {money(item.price)}'
         cells = [item.date.strftime('%d.%m.%Y')] + ([item.code] if private else []) + [description,money(-item.total if storno else item.total,currency=False)]
         rendered = [p(value,'amount' if n==len(cells)-1 else 'table') for n,value in enumerate(cells)]
-        if not preview:
-            rendered[0] = GroupedDateParagraph(cells[0], styles['table'], service_date=item.date, group=date_group)
+        rendered[0] = GroupedDateParagraph(cells[0], styles['table'], service_date=item.date, group=date_group)
         rows.append(rendered)
     table = LongTable(rows, colWidths=widths, repeatRows=1, hAlign='LEFT')
     table.setStyle(TableStyle([('LINEBELOW',(0,0),(-1,0),0.4,colors.black),

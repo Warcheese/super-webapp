@@ -867,7 +867,7 @@ class BillingTests(TestCase):
         text = '\n'.join(page.extract_text() for page in PdfReader(str(Path(self.tmp.name)/issued.pdf_path)).pages)
         self.assertEqual(sorted(expected, key=text.index), expected)
 
-    def test_final_pdf_groups_consecutive_dates_but_preview_keeps_every_date(self):
+    def test_final_and_preview_pdf_group_consecutive_dates(self):
         from io import BytesIO
         from pypdf import PdfReader
         from .pdf import render_pdf
@@ -880,8 +880,8 @@ class BillingTests(TestCase):
             self.invoice.invoice_type = kind
             self.invoice.save()
             preview = PdfReader(BytesIO(render_pdf(frozen_preview(self.invoice), preview=True))).pages[0].extract_text()
-            self.assertEqual(preview.count('03.02.2025'), 3)
-            self.assertEqual(preview.count('04.02.2025'), 2)
+            self.assertEqual(preview.count('03.02.2025'), 2)
+            self.assertEqual(preview.count('04.02.2025'), 1)
             final = PdfReader(BytesIO(render_pdf(frozen_preview(self.invoice)))).pages[0].extract_text()
             self.assertEqual(final.count('03.02.2025'), 2)
             self.assertEqual(final.count('04.02.2025'), 1)
@@ -910,3 +910,37 @@ class BillingTests(TestCase):
                 import re
                 seen.extend(re.findall(r'Seitenleistung (\d{3})', text))
             self.assertEqual(seen, [f'{i:03d}' for i in range(95)])
+
+    def test_preview_number_reads_sequence_without_allocating(self):
+        from io import BytesIO
+        from pypdf import PdfReader
+        url = reverse('invoice_pdf', args=[self.invoice.pk])
+        sequence_count = NumberSequence.objects.count()
+        response = self.client.get(url)
+        self.assertIn('ENTWURF-001', PdfReader(BytesIO(response.content)).pages[0].extract_text())
+        self.assertEqual(NumberSequence.objects.count(), sequence_count)
+        sequence = NumberSequence.objects.create(year=self.invoice.date.year, next_number=160)
+        for _ in range(2):
+            response = self.client.get(url)
+            self.assertIn('ENTWURF-160', PdfReader(BytesIO(response.content)).pages[0].extract_text())
+        sequence.refresh_from_db()
+        self.assertEqual(sequence.next_number, 160)
+        self.invoice.refresh_from_db()
+        self.assertIsNone(self.invoice.number)
+        issued = finalize_invoice(self.invoice.pk, self.invoice.revision)
+        self.assertEqual(issued.number, f'{self.invoice.date.year}-160')
+
+    def test_preview_repeats_group_date_on_each_page(self):
+        from io import BytesIO
+        from pypdf import PdfReader
+        self.invoice.items.all().delete()
+        for i in range(80):
+            InvoiceItem.objects.create(invoice=self.invoice,date=date(2025,4,18),description=f'Vorschauleistung {i:03d}',price='10')
+        response = self.client.get(reverse('invoice_pdf', args=[self.invoice.pk]))
+        pdf = PdfReader(BytesIO(response.content))
+        self.assertGreater(len(pdf.pages), 1)
+        for page in pdf.pages:
+            text = page.extract_text()
+            if 'Vorschauleistung' in text:
+                self.assertEqual(text.count('18.04.2025'), 1)
+            self.assertIn('ENTWURF-001', text)
