@@ -57,6 +57,24 @@ class NumberedCanvas(canvas.Canvas):
         super().save()
 
 
+class GroupedDateParagraph(Paragraph):
+    """Draw consecutive service dates once per page, after table pagination is known.
+
+    All cells keep their normal measured size; suppressing text only during draw
+    avoids changing row heights or page breaks while detecting continuation pages.
+    """
+    def __init__(self, text, style, *, service_date, group):
+        super().__init__(text, style)
+        self.service_date = service_date
+        self.group = group
+
+    def draw(self):
+        key = (self.group, self.canv.getPageNumber(), self.service_date)
+        if getattr(self.canv, '_super_last_service_date', None) != key:
+            super().draw()
+            self.canv._super_last_service_date = key
+
+
 def render_pdf(invoice, *, duplicate=False, preview=False):
     output = BytesIO()
     patient, practice = invoice.patient_snapshot, invoice.practice_snapshot
@@ -139,13 +157,17 @@ def render_pdf(invoice, *, duplicate=False, preview=False):
     headers = ['Datum'] + (['Ziffer'] if private else []) + ['Leistungsbeschreibung in Anlehnung der GebüH / Heilpraktikerleistungen' if private else 'Leistungsbeschreibung','Summe €']
     widths = [22*mm] + ([17*mm] if private else []) + [body_width-(65 if private else 48)*mm,26*mm]
     rows = [[p(h,'amount' if n==len(headers)-1 else 'table') for n,h in enumerate(headers)]]
+    date_group = object()
     for item in invoice.items.all():
         description = item.description
         if item.quantity != 1:
             quantity = format(item.quantity.normalize(),'f').replace('.',',')
             description = f'{description}\n{quantity} × {money(item.price)}'
         cells = [item.date.strftime('%d.%m.%Y')] + ([item.code] if private else []) + [description,money(-item.total if storno else item.total,currency=False)]
-        rows.append([p(value,'amount' if n==len(cells)-1 else 'table') for n,value in enumerate(cells)])
+        rendered = [p(value,'amount' if n==len(cells)-1 else 'table') for n,value in enumerate(cells)]
+        if not preview:
+            rendered[0] = GroupedDateParagraph(cells[0], styles['table'], service_date=item.date, group=date_group)
+        rows.append(rendered)
     table = LongTable(rows, colWidths=widths, repeatRows=1, hAlign='LEFT')
     table.setStyle(TableStyle([('LINEBELOW',(0,0),(-1,0),0.4,colors.black),
                               ('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),3),

@@ -866,3 +866,47 @@ class BillingTests(TestCase):
         issued = finalize_invoice(self.invoice.pk, self.invoice.revision)
         text = '\n'.join(page.extract_text() for page in PdfReader(str(Path(self.tmp.name)/issued.pdf_path)).pages)
         self.assertEqual(sorted(expected, key=text.index), expected)
+
+    def test_final_pdf_groups_consecutive_dates_but_preview_keeps_every_date(self):
+        from io import BytesIO
+        from pypdf import PdfReader
+        from .pdf import render_pdf
+        from .services import frozen_preview
+        self.invoice.items.all().delete()
+        dates = [date(2025, 2, 3), date(2025, 2, 3), date(2025, 2, 4), date(2025, 2, 4), date(2025, 2, 3)]
+        for i, service_date in enumerate(dates):
+            InvoiceItem.objects.create(invoice=self.invoice, date=service_date, description=f'Gruppenleistung {i}', price='10')
+        for kind in ['self', 'private']:
+            self.invoice.invoice_type = kind
+            self.invoice.save()
+            preview = PdfReader(BytesIO(render_pdf(frozen_preview(self.invoice), preview=True))).pages[0].extract_text()
+            self.assertEqual(preview.count('03.02.2025'), 3)
+            self.assertEqual(preview.count('04.02.2025'), 2)
+            final = PdfReader(BytesIO(render_pdf(frozen_preview(self.invoice)))).pages[0].extract_text()
+            self.assertEqual(final.count('03.02.2025'), 2)
+            self.assertEqual(final.count('04.02.2025'), 1)
+            self.assertEqual(list(self.invoice.items.values_list('date', flat=True)), dates)
+        html = self.client.get(reverse('invoice_detail', args=[self.invoice.pk])).content.decode()
+        self.assertEqual(html.count('03.02.2025'), 3)
+
+    def test_final_multipage_pdf_repeats_group_date_after_page_breaks(self):
+        from pypdf import PdfReader
+        self.invoice.items.all().delete()
+        service_date = date(2025, 3, 17)
+        for i in range(95):
+            InvoiceItem.objects.create(invoice=self.invoice, date=service_date, description=f'Seitenleistung {i:03d}', price='10')
+        issued = finalize_invoice(self.invoice.pk, 0)
+        for relative in [issued.pdf_path, issued.copy_path]:
+            pdf = PdfReader(str(Path(self.tmp.name)/relative))
+            self.assertGreater(len(pdf.pages), 1)
+            seen = []
+            for page in pdf.pages:
+                text = page.extract_text()
+                if 'Seitenleistung' in text:
+                    self.assertEqual(text.count('17.03.2025'), 1)
+                    self.assertLess(text.index('17.03.2025'), text.index('Seitenleistung'))
+                else:
+                    self.assertNotIn('17.03.2025', text)
+                import re
+                seen.extend(re.findall(r'Seitenleistung (\d{3})', text))
+            self.assertEqual(seen, [f'{i:03d}' for i in range(95)])

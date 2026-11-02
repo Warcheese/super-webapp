@@ -195,3 +195,5 @@ Die Dokumentationsliste öffnet Behandlungseinträge über ihr Datum; Patientenn
 Die Freitextfelder für Behandlungen und Nachträge aktivieren die Browser-Rechtschreibprüfung mit `spellcheck="true"` und `lang="de"`. Ein deutsches Wörterbuch muss im Browser verfügbar und aktiviert sein.
 
 Beim Bearbeiten eines Rechnungsentwurfs stehen neue Leistungszeilen oben. Auch neu hinzugefügte Zeilen und übernommene Vorlagen erscheinen dort und werden in den sichtbaren Bereich gescrollt. Formularindizes und gespeicherte Reihenfolge bleiben erhalten: Rechnungsvorschau und PDF zeigen die Leistungen weiterhin in der bisherigen Reihenfolge, neue Leistungen am Ende. Die Speicherleiste bleibt beim Scrollen am unteren Bildschirmrand erreichbar.
+
+In endgültigen Rechnungs-PDFs wird das Leistungsdatum bei aufeinanderfolgenden Positionen mit gleichem Datum nur bei der ersten Position angezeigt. Nach einem Datumswechsel sowie bei der ersten Leistungsposition auf einer neuen Seite erscheint es erneut. Das gilt auch für Zweitschriften und Stornorechnungen. Webansicht und PDF-Entwurfsvorschau zeigen weiterhin jedes Leistungsdatum; bereits gespeicherte PDFs bleiben unverändert.
