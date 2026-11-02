@@ -15,9 +15,9 @@
     const index = Number(management.value);
     if (index >= 100) { alert('Maximal 100 Leistungen pro Rechnung.'); return null; }
     const template = document.querySelector('#item-template').innerHTML.replaceAll('__prefix__', index);
-    list.insertAdjacentHTML('beforeend', template);
+    list.insertAdjacentHTML('afterbegin', template);
     management.value = index + 1;
-    return list.lastElementChild;
+    return list.firstElementChild;
   }
   function total() {
     let sum = 0;
@@ -29,11 +29,17 @@
     }
     document.querySelector('#live-total').textContent = sum.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'});
   }
-  document.querySelector('#add-item').addEventListener('click', () => { addRow(); total(); });
+  function revealRow(row) {
+    if (!row) return;
+    const description = row.querySelector('[name$="-description"]');
+    description.focus({preventScroll: true});
+    description.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+  document.querySelector('#add-item').addEventListener('click', () => { const row = addRow(); total(); revealRow(row); });
   document.querySelector('#add-service').addEventListener('click', () => {
     const service = templates.find(t => String(t.id) === picker.value);
     if (!service) return;
-    const blank = [...list.querySelectorAll('.item-card')].find(row => !row.querySelector('[name$="-description"]').value && !row.querySelector('[name$="-DELETE"]')?.checked);
+    const blank = [...list.querySelectorAll('.item-card')].find(row => !row.querySelector('[name$="-description"]').value && !row.querySelector('[name$="-DELETE"]')?.checked && !row.querySelector('[name$="-id"]')?.value);
     const row = blank || addRow();
     if (!row) return;
     for (const key of ['code', 'description', 'price']) row.querySelector(`[name$="-${key}"]`).value = service[key];
@@ -41,6 +47,7 @@
     const now = new Date();
     row.querySelector('[name$="-date"]').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     total();
+    revealRow(row);
   });
   form.addEventListener('input', total);
   form.addEventListener('change', () => {

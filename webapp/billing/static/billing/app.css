@@ -32,3 +32,7 @@ body[data-theme="dark"] .brand{color:var(--ink)}
 @media(max-width:740px){.clinical-panel{padding:20px}.clinical-filters{gap:12px}.clinical-filters .field{flex-basis:100%}.clinical-filters>input{flex-basis:100%;width:100%}.clinical-pagination a{font-size:13px}.clinical-panel .panel-heading{flex-wrap:wrap}.clinical-panel .table-wrap{margin:0}}
 
 .clinical-panel .table-wrap{overflow-x:auto}.clinical-panel .table-wrap table{min-width:700px}.clinical-panel .table-wrap td{vertical-align:top}
+
+/* The editor displays newest form indices first; invoice/PDF order stays unchanged. */
+#invoice-form .item-order-hint{font-size:12px;margin:0 0 12px}#invoice-form .item-card{scroll-margin-top:20px;scroll-margin-bottom:110px}#invoice-form .invoice-save-bar{position:sticky;bottom:12px;z-index:10;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 18px;box-shadow:0 5px 25px #233c3520;flex-wrap:wrap}#invoice-form .invoice-save-bar .button{white-space:normal}#invoice-form input{scroll-margin-bottom:110px}
+@media(max-width:740px){#invoice-form .invoice-save-bar{bottom:8px;gap:12px;padding:12px}#invoice-form .invoice-save-bar .button{flex:1 1 200px}}

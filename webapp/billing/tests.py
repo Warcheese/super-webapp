@@ -835,3 +835,34 @@ class BillingTests(TestCase):
             response = self.client.get(reverse('invoice_new'), {'patient': self.patient.pk})
         self.assertEqual(response.context['form']['date'].value(), today)
         self.assertEqual(str(response.context['form']['patient'].value()), str(self.patient.pk))
+
+    def test_reversed_editor_preserves_preview_database_and_pdf_order(self):
+        from pypdf import PdfReader
+        from io import BytesIO
+        self.item.description = 'Erste Behandlung'
+        self.item.save()
+        second = InvoiceItem.objects.create(invoice=self.invoice, date=date(2026, 1, 2), description='Zweite Behandlung', price='12', quantity='1')
+        url = reverse('invoice_edit', args=[self.invoice.pk])
+        response = self.client.get(url)
+        html = response.content.decode()
+        self.assertLess(html.index('name="items-1-description"'), html.index('name="items-0-description"'))
+        data = self.post_data() | {
+            'items-TOTAL_FORMS': '4', 'items-INITIAL_FORMS': '2',
+            'items-0-description': 'Erste Behandlung',
+            'items-1-id': second.pk, 'items-1-date': '2026-01-02', 'items-1-code': '',
+            'items-1-description': 'Zweite Behandlung', 'items-1-quantity': '1', 'items-1-price': '12',
+            'items-2-date': '2026-01-03', 'items-2-code': '', 'items-2-description': 'Dritte Behandlung', 'items-2-quantity': '1', 'items-2-price': '13',
+            'items-3-date': '2026-01-04', 'items-3-code': '', 'items-3-description': 'Vierte Behandlung', 'items-3-quantity': '1', 'items-3-price': '14',
+        }
+        self.assertEqual(self.client.post(url, data).status_code, 302)
+        expected = ['Erste Behandlung', 'Zweite Behandlung', 'Dritte Behandlung', 'Vierte Behandlung']
+        self.assertEqual(list(self.invoice.items.values_list('description', flat=True)), expected)
+        preview = self.client.get(reverse('invoice_detail', args=[self.invoice.pk])).content.decode()
+        self.assertEqual(sorted(expected, key=preview.index), expected)
+        html = self.client.get(url).content.decode()
+        for newer, older in [(3, 2), (2, 1), (1, 0)]:
+            self.assertLess(html.index(f'name="items-{newer}-description"'), html.index(f'name="items-{older}-description"'))
+        self.invoice.refresh_from_db()
+        issued = finalize_invoice(self.invoice.pk, self.invoice.revision)
+        text = '\n'.join(page.extract_text() for page in PdfReader(str(Path(self.tmp.name)/issued.pdf_path)).pages)
+        self.assertEqual(sorted(expected, key=text.index), expected)

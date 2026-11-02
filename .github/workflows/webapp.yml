@@ -29,4 +29,5 @@ jobs:
         with:
           node-version: '22'
       - run: node tests/clinical-autosave.cjs
+      - run: node tests/invoice-editor.cjs
       - run: docker build -t super-webapp:test .
